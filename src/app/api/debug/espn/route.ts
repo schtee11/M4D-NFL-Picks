@@ -24,8 +24,9 @@ async function probe(label: string, url: string, extraHeaders: Record<string, st
     } catch {
       /* non-JSON (e.g. 403 HTML) */
     }
-    const events: any[] =
-      body?.events ?? body?.content?.sbData?.events ?? body?.items ?? [];
+    const events: any[] = Array.isArray(body)
+      ? body
+      : body?.events ?? body?.content?.sbData?.events ?? body?.items ?? [];
     return {
       label,
       url,
@@ -33,8 +34,8 @@ async function probe(label: string, url: string, extraHeaders: Record<string, st
       ok: res.ok,
       ms,
       eventCount: events.length,
-      bodyKind: body ? "json" : "non-json",
-      snippet: text.slice(0, 90),
+      bodyKind: body ? (Array.isArray(body) ? "array" : "json") : "non-json",
+      snippet: text.slice(0, 160),
     };
   } catch (e) {
     return { label, url, error: (e as Error)?.message ?? "fetch threw", ms: Date.now() - started };
@@ -69,6 +70,10 @@ export async function GET(req: Request) {
       "TheSportsDB (non-ESPN)",
       `https://www.thesportsdb.com/api/v1/json/3/eventsround.php?id=4391&r=${week}&s=${season}`,
     ),
+    // Sleeper — free, open, developer-friendly API (usually not IP-blocked).
+    probe("Sleeper state/nfl", `https://api.sleeper.app/v1/state/nfl`),
+    probe("Sleeper schedule .com", `https://api.sleeper.com/schedule/nfl/regular/${season}`),
+    probe("Sleeper schedule .app", `https://api.sleeper.app/schedule/nfl/regular/${season}`),
   ]);
 
   return NextResponse.json({ season, week, results }, { status: 200 });
