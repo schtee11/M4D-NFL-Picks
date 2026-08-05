@@ -44,14 +44,31 @@ function fmtLine(odds: GameVM["odds"]): string | null {
   return parts.length ? parts.join(" · ") : null;
 }
 
-const metaRow: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 6,
-  fontSize: 11,
-  opacity: 0.6,
-  marginTop: 8,
-};
+// Kickoff before the game; live/final status once it's underway. Shown in the
+// top-right of every game card (both views), so the card body stays compact.
+function fmtStatus(g: GameVM): string {
+  if (g.state !== "pre" && g.statusDetail) return g.statusDetail;
+  return fmtKick(g.date) || g.statusDetail || "Scheduled";
+}
+
+// "Rest BUF 7d · CIN 10d" — days of rest for both teams, or null when unknown.
+function fmtRest(g: GameVM): string | null {
+  if (g.restAway == null && g.restHome == null) return null;
+  const a = g.restAway != null ? `${g.restAway}d` : "—";
+  const h = g.restHome != null ? `${g.restHome}d` : "—";
+  return `Rest ${g.away.abbr} ${a} · ${g.home.abbr} ${h}`;
+}
+
+// The supporting detail line shared by both views: betting line, then rest.
+// (Kickoff/status lives in the header.) Returns [] when there's nothing to show.
+function gameMeta(g: GameVM): string[] {
+  const parts: string[] = [];
+  const line = fmtLine(g.odds);
+  if (line) parts.push(line);
+  const rest = fmtRest(g);
+  if (rest) parts.push(rest);
+  return parts;
+}
 
 export default function WeeklyScreen() {
   const [mode, setMode] = useState<Mode>("team");
@@ -284,82 +301,33 @@ function TeamGameCard({
   const pickedLoss = g.picked != null && g.picked === opp;
   const settled = g.state === "post" && g.winner != null;
   const actualWin = settled && g.winner === team;
-  const line = fmtLine(g.odds);
-  const teamRest = isHome ? g.restHome : g.restAway;
-  const kick = fmtKick(g.date);
 
-  const metaParts = [kick, line, teamRest != null ? `${teamRest}d rest` : null].filter(Boolean);
+  const winState: SegState = settled ? (actualWin ? "correct" : pickedWin ? "wrong" : "") : pickedWin ? "on" : "";
+  const lossState: SegState = settled ? (!actualWin ? "correct" : pickedLoss ? "wrong" : "") : pickedLoss ? "on" : "";
 
   return (
-    <div className="card elev-sm" style={{ padding: "9px 11px", gap: 7, marginBottom: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 500 }}>
+    <GameShell
+      header={
+        <>
           <span style={{ opacity: 0.5 }}>Wk {g.week}</span>{" "}
           <span style={{ opacity: 0.9 }}>
             {isHome ? "vs" : "@"} {teamName(opp)}
           </span>
-        </span>
-        {g.locked && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.5, flex: "none" }}>
-            <LockIcon size={12} /> Locked
-          </span>
-        )}
+        </>
+      }
+      status={fmtStatus(g)}
+      locked={g.locked}
+      meta={gameMeta(g)}
+    >
+      <div className="wl-toggle" role="group" aria-label={`Pick win or loss for ${teamName(team)}`}>
+        <Seg state={winState} disabled={g.locked} pressed={pickedWin} onClick={() => onPick(g.id, team, g.week)}>
+          Win {check(winState)}
+        </Seg>
+        <Seg state={lossState} disabled={g.locked} pressed={pickedLoss} onClick={() => onPick(g.id, opp, g.week)}>
+          Loss {check(lossState)}
+        </Seg>
       </div>
-      <WLToggle
-        pickedWin={pickedWin}
-        pickedLoss={pickedLoss}
-        disabled={g.locked}
-        settled={settled}
-        actualWin={actualWin}
-        onWin={() => onPick(g.id, team, g.week)}
-        onLoss={() => onPick(g.id, opp, g.week)}
-      />
-      {metaParts.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0 6px", fontSize: 11, opacity: 0.55 }}>
-          {metaParts.map((part, i) => (
-            <span key={i}>
-              {i > 0 && <span style={{ opacity: 0.6 }}>· </span>}
-              {part}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Compact segmented Win/Loss picker — one pill, active/graded side fills in.
-function WLToggle({
-  pickedWin,
-  pickedLoss,
-  disabled,
-  settled,
-  actualWin,
-  onWin,
-  onLoss,
-}: {
-  pickedWin: boolean;
-  pickedLoss: boolean;
-  disabled?: boolean;
-  settled: boolean;
-  actualWin: boolean;
-  onWin: () => void;
-  onLoss: () => void;
-}) {
-  const winClass = settled ? (actualWin ? "is-correct" : pickedWin ? "is-wrong" : "") : pickedWin ? "is-on" : "";
-  const lossClass = settled ? (!actualWin ? "is-correct" : pickedLoss ? "is-wrong" : "") : pickedLoss ? "is-on" : "";
-
-  return (
-    <div className="wl-toggle" role="group" aria-label="Pick win or loss">
-      <button type="button" disabled={disabled} onClick={onWin} className={("wl-seg " + winClass).trim()} aria-pressed={pickedWin}>
-        Win
-        {(winClass === "is-on" || winClass === "is-correct") && <CheckIcon size={12} />}
-      </button>
-      <button type="button" disabled={disabled} onClick={onLoss} className={("wl-seg " + lossClass).trim()} aria-pressed={pickedLoss}>
-        Loss
-        {(lossClass === "is-on" || lossClass === "is-correct") && <CheckIcon size={12} />}
-      </button>
-    </div>
+    </GameShell>
   );
 }
 
@@ -408,96 +376,125 @@ function WeekMode({
 }
 
 function GameCard({ g, onPick }: { g: GameVM; onPick: (id: string, team: string) => void }) {
-  const line = fmtLine(g.odds);
-  const showRest = g.restAway != null || g.restHome != null;
   return (
-    <div className="card elev-sm" style={{ padding: 12, marginBottom: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, opacity: 0.55 }}>{g.statusDetail || fmtKick(g.date) || "Scheduled"}</span>
-        {g.locked && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.5 }}>
-            <LockIcon size={12} /> Locked
-          </span>
-        )}
+    <GameShell status={fmtStatus(g)} locked={g.locked} meta={gameMeta(g)}>
+      <div className="wl-toggle" role="group" aria-label="Pick the winner">
+        <TeamSeg g={g} team={g.away.abbr} score={g.away.score} onPick={onPick} away />
+        <TeamSeg g={g} team={g.home.abbr} score={g.home.score} onPick={onPick} />
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <SideBtn game={g} team={g.away.abbr} score={g.away.score} onPick={onPick} />
-        <SideBtn game={g} team={g.home.abbr} score={g.home.score} onPick={onPick} home />
+    </GameShell>
+  );
+}
+
+// One side of the week-view winner picker — a segment carrying the team's
+// logo, name and (live/final) score. Grading mirrors the team view.
+function TeamSeg({
+  g,
+  team,
+  score,
+  onPick,
+  away,
+}: {
+  g: GameVM;
+  team: string;
+  score: number | null;
+  onPick: (id: string, team: string) => void;
+  away?: boolean;
+}) {
+  const selected = g.picked === team;
+  const settled = g.state === "post" && g.winner != null;
+  const state: SegState = settled ? (g.winner === team ? "correct" : selected ? "wrong" : "") : selected ? "on" : "";
+
+  return (
+    <Seg state={state} disabled={g.locked} pressed={selected} onClick={() => onPick(g.id, team)} ariaLabel={teamName(team)}>
+      <TeamLogo id={team} size={18} />
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {away ? "@ " : ""}
+        {teamName(team)}
+      </span>
+      {score != null && <span style={{ fontWeight: 600 }}>{score}</span>}
+      {check(state)}
+    </Seg>
+  );
+}
+
+// ── Shared compact game-card primitives (used by both views) ─────────────────
+type SegState = "" | "on" | "correct" | "wrong";
+
+// Card frame: a top row with an optional label (left) and the kickoff/status
+// pinned top-right, the picker in the middle, and a slim supporting-data row.
+function GameShell({
+  header,
+  status,
+  locked,
+  meta,
+  children,
+}: {
+  header?: React.ReactNode;
+  status: string;
+  locked?: boolean;
+  meta: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="card elev-sm" style={{ padding: "9px 11px", gap: 7, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 500 }}>
+          {header}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flex: "none", fontSize: 11, opacity: 0.55, whiteSpace: "nowrap" }}>
+          <span>{status}</span>
+          {locked && <LockIcon size={12} />}
+        </span>
       </div>
-      {(line || showRest) && (
-        <div style={metaRow}>
-          {line && <span>{line}</span>}
-          {line && showRest && <span>·</span>}
-          {showRest && (
-            <span>
-              Rest: {g.away.abbr} {g.restAway != null ? `${g.restAway}d` : "—"} · {g.home.abbr}{" "}
-              {g.restHome != null ? `${g.restHome}d` : "—"}
+      {children}
+      {meta.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0 6px", fontSize: 11, opacity: 0.55 }}>
+          {meta.map((part, i) => (
+            <span key={i}>
+              {i > 0 && <span style={{ opacity: 0.6 }}>· </span>}
+              {part}
             </span>
-          )}
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function SideBtn({
-  game,
-  team,
-  score,
-  onPick,
-  home,
+// A single segment of a two-way picker pill.
+function Seg({
+  state,
+  disabled,
+  pressed,
+  onClick,
+  ariaLabel,
+  children,
 }: {
-  game: GameVM;
-  team: string;
-  score: number | null;
-  onPick: (id: string, team: string) => void;
-  home?: boolean;
+  state: SegState;
+  disabled?: boolean;
+  pressed?: boolean;
+  onClick: () => void;
+  ariaLabel?: string;
+  children: React.ReactNode;
 }) {
-  const selected = game.picked === team;
-  const isWinner = game.state === "post" && game.winner === team;
-  const correct = game.state === "post" && game.picked === team && game.winner === team;
-  const wrong = game.state === "post" && game.picked === team && game.winner !== team;
-
-  const borderColor = correct ? "var(--color-accent)" : wrong ? "#ff8a8a" : "var(--color-divider)";
-
   return (
     <button
       type="button"
-      disabled={game.locked}
-      onClick={() => onPick(game.id, team)}
-      className={"sel-btn" + (selected && !game.locked ? " is-selected" : "")}
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: 10,
-        borderRadius: "var(--radius-sm)",
-        border: `1px solid ${borderColor}`,
-        background: "var(--color-bg)",
-        cursor: game.locked ? "default" : "pointer",
-        textAlign: "left",
-        color: "var(--color-text)",
-        opacity: game.state === "post" && !isWinner ? 0.55 : 1,
-      }}
+      disabled={disabled}
+      onClick={onClick}
+      aria-pressed={pressed}
+      aria-label={ariaLabel}
+      className={"wl-seg" + (state ? " is-" + state : "")}
     >
-      <span className="pick-fill" style={{ borderRadius: "var(--radius-sm)" }} />
-      <span className="pick-ring" style={{ borderRadius: "var(--radius-sm)" }} />
-      <TeamLogo id={team} size={22} />
-      <span style={{ position: "relative", flex: 1, fontSize: 12.5 }}>
-        {home ? "" : "@ "}
-        {teamName(team)}
-      </span>
-      {score != null && <span style={{ position: "relative", fontSize: 13, opacity: 0.8, fontWeight: 500 }}>{score}</span>}
-      {selected && (
-        <span style={{ position: "relative", color: correct ? "var(--color-accent)" : "var(--color-neutral-400)" }}>
-          <CheckIcon size={12} />
-        </span>
-      )}
+      {children}
     </button>
   );
+}
+
+// The check that marks the active pick (pre-game) or the correct side (final).
+function check(state: SegState) {
+  return state === "on" || state === "correct" ? <CheckIcon size={12} /> : null;
 }
 
 function Spinner() {
