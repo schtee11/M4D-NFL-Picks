@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DIVISIONS, Conference, divisionsFor, teamName } from "@/lib/teams";
 import { SeasonPicks, getSeeds, getSuperBowl, champion, projectedWins } from "@/lib/bracket";
 import { APP_NAME } from "@/lib/config";
 import { TeamLogo } from "@/components/TeamLogo";
-import { TrophyIcon, ShareIcon, CloseIcon, CheckIcon, DownloadIcon } from "@/components/icons";
+import { TrophyIcon, ShareIcon, CloseIcon, CheckIcon, ImageIcon } from "@/components/icons";
 
 const kicker: React.CSSProperties = {
   fontSize: 10.5,
@@ -54,9 +54,62 @@ export default function ShareSheet({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [imgMsg, setImgMsg] = useState<string | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const champ = champion(picks);
   const sb = getSuperBowl(picks);
   const text = buildText(picks, name, league, season);
+
+  // Render the card to a PNG and put the image on the clipboard (so it can be
+  // pasted straight into a note/chat). Falls back to downloading the PNG on
+  // browsers without image clipboard support.
+  async function copyImage() {
+    const node = cardRef.current;
+    if (!node) return;
+    setBusy(true);
+    setImgMsg(null);
+    try {
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(node, {
+        pixelRatio: 2,
+        cacheBust: true,
+        skipFonts: true,
+        backgroundColor: "#161826",
+        filter: (el) => !(el instanceof HTMLElement && el.dataset.noexport === "true"),
+      });
+      if (!blob) throw new Error("render failed");
+
+      const CI = (window as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+      if (CI && navigator.clipboard && "write" in navigator.clipboard) {
+        try {
+          await navigator.clipboard.write([new CI({ "image/png": blob })]);
+          flash("Copied");
+          return;
+        } catch {
+          /* fall through to download */
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(name || "my").toLowerCase().replace(/\s+/g, "-")}-bracket.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      flash("Saved");
+    } catch {
+      flash("Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function flash(msg: string) {
+    setImgMsg(msg);
+    setTimeout(() => setImgMsg(null), 1800);
+  }
 
   async function share() {
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
@@ -87,12 +140,6 @@ export default function ShareSheet({
     }
   }
 
-  function savePdf() {
-    // A print stylesheet isolates the card; the browser's "Save as PDF"
-    // (or AirPrint on mobile) turns it into a clean document.
-    window.print();
-  }
-
   return (
     <div
       role="dialog"
@@ -111,35 +158,34 @@ export default function ShareSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card elev-md share-print"
+        className="card elev-md"
         style={{ width: "100%", maxWidth: 420, maxHeight: "88dvh", overflowY: "auto", padding: 0 }}
       >
-        {/* Header */}
-        <div
-          className="share-head"
-          style={{
-            position: "sticky",
-            top: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 16px",
-            background: "var(--color-surface)",
-            borderBottom: "1px solid var(--color-divider)",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{name ? `${name}’s bracket` : "My bracket"}</div>
-            <div style={{ fontSize: 11.5, opacity: 0.55 }}>
-              {league} · {season}
+        {/* Capture target: everything above the action bar becomes the PNG. */}
+        <div ref={cardRef} style={{ background: "var(--color-bg)" }}>
+          {/* Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              background: "var(--color-surface)",
+              borderBottom: "1px solid var(--color-divider)",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{name ? `${name}’s bracket` : "My bracket"}</div>
+              <div style={{ fontSize: 11.5, opacity: 0.55 }}>
+                {league} · {season}
+              </div>
             </div>
+            <button type="button" data-noexport="true" onClick={onClose} className="btn btn-ghost" aria-label="Close" style={{ padding: 6 }}>
+              <CloseIcon size={18} />
+            </button>
           </div>
-          <button type="button" onClick={onClose} className="btn btn-ghost share-no-print" aria-label="Close" style={{ padding: 6 }}>
-            <CloseIcon size={18} />
-          </button>
-        </div>
 
-        <div style={{ padding: 16 }}>
+          <div style={{ padding: 16 }}>
           {/* Champion */}
           {champ && (
             <div
@@ -151,7 +197,7 @@ export default function ShareSheet({
               </div>
               <div style={{ ...kicker, marginBottom: 8 }}>Predicted champion</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                <TeamLogo id={champ} size={30} />
+                <TeamLogo id={champ} size={30} proxied />
                 <span style={{ fontSize: 19, fontWeight: 600 }}>{teamName(champ)}</span>
               </div>
             </div>
@@ -176,7 +222,7 @@ export default function ShareSheet({
               const t = picks.divisionPicks[d.key];
               return (
                 <div key={d.key} className="card elev-sm" style={{ padding: "8px 10px", flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {t ? <TeamLogo id={t} size={18} /> : <span style={{ width: 18 }} />}
+                  {t ? <TeamLogo id={t} size={18} proxied /> : <span style={{ width: 18 }} />}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 9.5, opacity: 0.5 }}>{d.key}</div>
                     <div style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -202,7 +248,7 @@ export default function ShareSheet({
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", borderBottom: "1px solid var(--color-divider)" }}
                   >
                     <span style={{ width: 20, fontSize: 11, fontWeight: 600, color: "var(--color-accent)" }}>#{s.seed}</span>
-                    <TeamLogo id={s.team} size={18} />
+                    <TeamLogo id={s.team} size={18} proxied />
                     <span style={{ flex: 1, fontSize: 12.5 }}>{teamName(s.team)}</span>
                     <span style={{ fontSize: 11, opacity: 0.5 }}>
                       {winners.has(s.team) ? "Div" : "WC"} · {projectedWins(picks, s.team)}–{17 - projectedWins(picks, s.team)}
@@ -212,11 +258,11 @@ export default function ShareSheet({
               </div>
             );
           })}
+          </div>
         </div>
 
         {/* Actions */}
         <div
-          className="share-foot share-no-print"
           style={{
             position: "sticky",
             bottom: 0,
@@ -231,11 +277,18 @@ export default function ShareSheet({
             {copied ? <CheckIcon size={14} /> : null}
             {copied ? "Copied" : "Copy"}
           </button>
-          <button type="button" className="btn btn-secondary" onClick={savePdf} style={{ flex: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <DownloadIcon size={15} /> PDF
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={copyImage}
+            disabled={busy}
+            style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          >
+            {imgMsg ? <CheckIcon size={14} /> : <ImageIcon size={15} />}
+            {busy ? "Rendering…" : imgMsg ?? "Copy image"}
           </button>
-          <button type="button" className="btn btn-primary" onClick={share} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <ShareIcon size={16} /> Share
+          <button type="button" className="btn btn-primary" onClick={share} aria-label="Share" style={{ flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <ShareIcon size={16} />
           </button>
         </div>
       </div>
@@ -246,12 +299,12 @@ export default function ShareSheet({
 function SbTeam({ id, tag, alignRight }: { id: string; tag: string; alignRight?: boolean }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, justifyContent: alignRight ? "flex-end" : "flex-start" }}>
-      {!alignRight && <TeamLogo id={id} size={24} />}
+      {!alignRight && <TeamLogo id={id} size={24} proxied />}
       <div style={{ textAlign: alignRight ? "right" : "left" }}>
         <div style={{ fontSize: 9.5, opacity: 0.5 }}>{tag}</div>
         <div style={{ fontSize: 13 }}>{teamName(id)}</div>
       </div>
-      {alignRight && <TeamLogo id={id} size={24} />}
+      {alignRight && <TeamLogo id={id} size={24} proxied />}
     </div>
   );
 }

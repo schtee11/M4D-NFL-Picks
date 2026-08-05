@@ -9,10 +9,14 @@ export function TeamLogo({
   id,
   size = 22,
   style,
+  proxied = false,
 }: {
   id: string;
   size?: number;
   style?: React.CSSProperties;
+  // Load via our same-origin /api/logo proxy — used by the share card so the
+  // logo can be rasterized into a PNG without a cross-origin canvas taint.
+  proxied?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
 
@@ -36,7 +40,7 @@ export function TeamLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={teamLogo(id)}
+      src={proxied ? `/api/logo?id=${encodeURIComponent(id)}` : teamLogo(id)}
       alt=""
       width={size}
       height={size}

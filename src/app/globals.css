@@ -426,38 +426,3 @@ button { font-family: var(--font-body); }
     margin-right: auto;
   }
 }
-
-/* ── Print / Save-as-PDF: render only the share card, faithfully ───────────── */
-@media print {
-  @page { margin: 12mm; }
-  /* Collapse the fixed app shell so the printed flow isn't clipped. */
-  .app-shell,
-  .app-frame,
-  .app-content { height: auto !important; min-height: 0 !important; overflow: visible !important; display: block !important; }
-
-  /* Hide everything, then reveal just the share card. */
-  body * { visibility: hidden; }
-  .share-print,
-  .share-print * { visibility: visible; }
-
-  .share-print {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    max-width: none !important;
-    max-height: none !important;
-    overflow: visible !important;
-    border: none !important;
-    box-shadow: none !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  /* Chrome (sticky header/footer) and the on-screen action controls drop out. */
-  .share-print .share-head,
-  .share-print .share-foot { position: static !important; }
-  .share-no-print { display: none !important; }
-
-  /* Keep card backgrounds and accents in the PDF. */
-  .share-print .card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-}

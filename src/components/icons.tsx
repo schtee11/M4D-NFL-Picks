@@ -133,3 +133,14 @@ export function DownloadIcon(props: P) {
     </svg>
   );
 }
+
+export function ImageIcon(props: P) {
+  const s = props.size ?? 18;
+  return (
+    <svg {...base(s, props)}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="M21 15l-5-4-9 8" />
+    </svg>
+  );
+}
