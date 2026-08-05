@@ -23,7 +23,8 @@ import {
 } from "@/lib/bracket";
 import { TeamOption, MatchupSide } from "@/components/TeamPickButton";
 import { TeamLogo } from "@/components/TeamLogo";
-import { TrophyIcon, ChevronRight } from "@/components/icons";
+import { TrophyIcon, ChevronRight, ShareIcon } from "@/components/icons";
+import ShareSheet from "@/components/ShareSheet";
 
 interface Swap {
   division: string;
@@ -47,6 +48,8 @@ export default function PredictionScreen() {
   const [saving, setSaving] = useState(false);
   const [derivedTeams, setDerivedTeams] = useState<string[]>([]);
   const [swaps, setSwaps] = useState<Swap[]>([]);
+  const [meta, setMeta] = useState({ name: "", league: "", season: 0 });
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/predictions")
@@ -57,6 +60,7 @@ export default function PredictionScreen() {
         setDeadline(!!d.deadlinePassed);
         setDerivedTeams(d.derivedTeams || []);
         setSwaps(d.swaps || []);
+        setMeta({ name: d.displayName || "", league: d.league || "", season: d.season || 0 });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -182,10 +186,26 @@ export default function PredictionScreen() {
 
   return (
     <div>
-      <h4 style={{ margin: "0 0 2px" }}>Your bracket</h4>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, margin: "0 0 2px" }}>
+        <h4 style={{ margin: 0 }}>Your bracket</h4>
+        {made > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setShareOpen(true)}
+            style={{ flex: "none", display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", fontSize: 12.5 }}
+          >
+            <ShareIcon size={15} /> Share
+          </button>
+        )}
+      </div>
       <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
         Pick your playoff field, seed it, and build the bracket — all in one place.
       </p>
+
+      {shareOpen && (
+        <ShareSheet picks={picks} name={meta.name} league={meta.league} season={meta.season} onClose={() => setShareOpen(false)} />
+      )}
 
       {/* ── Step 1 · Division winners ─────────────────────────────────── */}
       <SectionLabel n={1} title="Division winners" hint="Pick one winner in each division." />

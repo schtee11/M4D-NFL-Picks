@@ -101,3 +101,24 @@ export function ChevronRight(props: P) {
     </svg>
   );
 }
+
+export function ShareIcon(props: P) {
+  const s = props.size ?? 18;
+  return (
+    <svg {...base(s, props)}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 10.6l6.8-4M8.6 13.4l6.8 4" />
+    </svg>
+  );
+}
+
+export function CloseIcon(props: P) {
+  const s = props.size ?? 18;
+  return (
+    <svg {...base(s, props)}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}

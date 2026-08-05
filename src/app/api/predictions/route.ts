@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getOrCreateEntry, parseEntry, savePicks, saveBracket, setLocked } from "@/lib/picks";
 import { canLock } from "@/lib/bracket";
 import { syncEntry } from "@/lib/sync";
-import { deadlinePassed } from "@/lib/config";
+import { deadlinePassed, LEAGUE_NAME, SEASON } from "@/lib/config";
 import { Conference } from "@/lib/teams";
 
 export async function GET() {
@@ -22,6 +22,10 @@ export async function GET() {
     deadlinePassed: deadlinePassed(),
     derivedTeams: sync.derivedTeams,
     swaps: sync.swaps,
+    // Labels for the share overview.
+    displayName: user.displayName,
+    league: LEAGUE_NAME,
+    season: SEASON,
   });
 }
 
