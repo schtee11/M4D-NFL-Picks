@@ -115,6 +115,16 @@ export async function getScoreboard(
   return [];
 }
 
+// Full regular-season schedule (weeks 1..18) as a flat list of games. Used to
+// derive projected records from a user's weekly picks and to tell when a team's
+// entire slate has been picked. Weeks are fetched in parallel; any week that
+// fails simply contributes nothing, so a partial outage degrades gracefully.
+export async function getSeasonSchedule(season: number): Promise<Game[]> {
+  const weeks = Array.from({ length: 18 }, (_, i) => i + 1);
+  const perWeek = await Promise.all(weeks.map((w) => getScoreboard(season, w, 2)));
+  return perWeek.flat();
+}
+
 // ── Actual results used for scoring season predictions ───────────────────────
 
 export interface ActualStandings {

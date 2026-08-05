@@ -16,6 +16,12 @@ import {
 import { TeamOption } from "@/components/TeamPickButton";
 import { TeamLogo } from "@/components/TeamLogo";
 
+interface Swap {
+  division: string;
+  promoted: string;
+  demoted: string;
+}
+
 export default function PicksScreen() {
   const router = useRouter();
   const [picks, setPicks] = useState<SeasonPicks>(emptyPicks());
@@ -23,6 +29,10 @@ export default function PicksScreen() {
   const [deadlinePassed, setDeadline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Teams whose projected record is now driven by a completed weekly slate,
+  // and any wildcard↔division-winner swaps the server applied last save.
+  const [derivedTeams, setDerivedTeams] = useState<string[]>([]);
+  const [swaps, setSwaps] = useState<Swap[]>([]);
 
   useEffect(() => {
     fetch("/api/predictions")
@@ -31,6 +41,8 @@ export default function PicksScreen() {
         if (d.picks) setPicks(d.picks);
         setLocked(!!d.locked);
         setDeadline(!!d.deadlinePassed);
+        setDerivedTeams(d.derivedTeams || []);
+        setSwaps(d.swaps || []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -39,7 +51,7 @@ export default function PicksScreen() {
 
   const persist = useCallback(async (next: SeasonPicks) => {
     setSaving(true);
-    await fetch("/api/predictions", {
+    const res = await fetch("/api/predictions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -48,7 +60,16 @@ export default function PicksScreen() {
         wildcards: next.wildcards,
         records: next.records,
       }),
-    }).catch(() => {});
+    }).catch(() => null);
+    // Adopt the server's reconciled picks (weekly override + auto-swap).
+    if (res && res.ok) {
+      const d = await res.json().catch(() => null);
+      if (d?.picks) {
+        setPicks(d.picks);
+        setDerivedTeams(d.derivedTeams || []);
+        setSwaps(d.swaps || []);
+      }
+    }
     setSaving(false);
   }, []);
 
@@ -218,13 +239,29 @@ export default function PicksScreen() {
         );
       })}
 
+      {/* Auto-swap notice: a wildcard out-won the division winner and took over. */}
+      {swaps.length > 0 && (
+        <div className="card elev-sm" style={{ padding: "10px 12px", marginTop: 16, borderColor: "var(--color-accent)" }}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            {swaps.map((s) => (
+              <div key={s.division}>
+                <strong>{teamName(s.promoted)}</strong> out-won{" "}
+                <strong>{teamName(s.demoted)}</strong> in the {s.division}, so they
+                swapped — {teamName(s.promoted)} is now your division winner.
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Seeding by projected record — only once all 14 teams are chosen */}
       {lockable && (
         <>
           <h4 style={{ margin: "24px 0 2px" }}>Seeding</h4>
           <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
             Set each team&apos;s projected record. Division winners seed 1–4 by
-            wins, wildcards 5–7 — this drives your bracket.
+            wins, wildcards 5–7 — this drives your bracket. Teams whose full
+            weekly slate you&apos;ve picked are set from those picks.
           </p>
           <div className="grid-2">
             {(["AFC", "NFC"] as Conference[]).map((conf) => (
@@ -247,6 +284,7 @@ export default function PicksScreen() {
                     teamId={s.team}
                     wins={projectedWins(picks, s.team)}
                     disabled={frozen}
+                    auto={derivedTeams.includes(s.team)}
                     onChange={(w) => setWins(s.team, w)}
                   />
                 ))}
@@ -307,12 +345,14 @@ function SeedRow({
   teamId,
   wins,
   disabled,
+  auto,
   onChange,
 }: {
   seed: number;
   teamId: string;
   wins: number;
   disabled?: boolean;
+  auto?: boolean;
   onChange: (wins: number) => void;
 }) {
   const losses = REGULAR_SEASON_GAMES - wins;
@@ -343,28 +383,45 @@ function SeedRow({
       <span style={{ fontSize: 12, opacity: 0.6, width: 42, textAlign: "right" }}>
         {wins}–{losses}
       </span>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={disabled || wins <= 0}
-          onClick={() => onChange(wins - 1)}
-          style={{ padding: "2px 9px", minWidth: 30 }}
-          aria-label={`Fewer wins for ${teamName(teamId)}`}
+      {auto ? (
+        <span
+          title="Set from your completed weekly picks"
+          style={{
+            flex: "none",
+            fontSize: 10,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: "var(--color-accent)",
+            color: "#fff",
+            whiteSpace: "nowrap",
+          }}
         >
-          −
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={disabled || wins >= REGULAR_SEASON_GAMES}
-          onClick={() => onChange(wins + 1)}
-          style={{ padding: "2px 9px", minWidth: 30 }}
-          aria-label={`More wins for ${teamName(teamId)}`}
-        >
-          +
-        </button>
-      </div>
+          Weekly
+        </span>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={disabled || wins <= 0}
+            onClick={() => onChange(wins - 1)}
+            style={{ padding: "2px 9px", minWidth: 30 }}
+            aria-label={`Fewer wins for ${teamName(teamId)}`}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={disabled || wins >= REGULAR_SEASON_GAMES}
+            onClick={() => onChange(wins + 1)}
+            style={{ padding: "2px 9px", minWidth: 30 }}
+            aria-label={`More wins for ${teamName(teamId)}`}
+          >
+            +
+          </button>
+        </div>
+      )}
     </div>
   );
 }

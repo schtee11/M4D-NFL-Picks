@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getOrCreateEntry, parseEntry, savePicks, saveBracket, setLocked } from "@/lib/picks";
 import { canLock } from "@/lib/bracket";
+import { syncEntry } from "@/lib/sync";
 import { deadlinePassed } from "@/lib/config";
 import { Conference } from "@/lib/teams";
 
@@ -9,12 +10,17 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const entry = await getOrCreateEntry(user.id);
-  const picks = parseEntry(entry);
+  const frozen = entry.locked || deadlinePassed();
+  // Pull weekly picks into the season projections (override manual W/L for teams
+  // with a completed slate) and auto-swap any out-of-order division winner.
+  const sync = await syncEntry(user.id, frozen, entry);
   return NextResponse.json({
-    picks,
+    picks: sync.picks,
     locked: entry.locked,
-    canLock: canLock(picks),
+    canLock: canLock(sync.picks),
     deadlinePassed: deadlinePassed(),
+    derivedTeams: sync.derivedTeams,
+    swaps: sync.swaps,
   });
 }
 
@@ -53,8 +59,16 @@ export async function POST(req: Request) {
           const n = Math.round(Number(val));
           if (Number.isFinite(n)) records[team] = Math.min(17, Math.max(0, n));
         }
-        const updated = await savePicks(user.id, divisionPicks, wildcards, records);
-        return NextResponse.json({ ok: true, picks: parseEntry(updated) });
+        await savePicks(user.id, divisionPicks, wildcards, records);
+        // Re-derive from weekly picks and auto-swap before returning, so the UI
+        // gets the reconciled truth rather than the raw submission.
+        const sync = await syncEntry(user.id, false);
+        return NextResponse.json({
+          ok: true,
+          picks: sync.picks,
+          derivedTeams: sync.derivedTeams,
+          swaps: sync.swaps,
+        });
       }
       case "saveBracket": {
         if (!entry.locked) {

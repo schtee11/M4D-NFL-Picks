@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getScoreboard } from "@/lib/espn";
+import { getScoreboard, Game } from "@/lib/espn";
+import { getCachedSchedule } from "@/lib/sync";
+import { TEAMS, normalizeAbbr } from "@/lib/teams";
 import { SEASON } from "@/lib/config";
 
 function clampWeek(w: unknown): number {
@@ -10,31 +12,65 @@ function clampWeek(w: unknown): number {
   return Math.min(18, Math.max(1, Math.round(n)));
 }
 
-// GET /api/weekly?week=N → games + this user's picks + per-game lock state
+function toView(g: Game, now: number, picked: string | null) {
+  return {
+    id: g.id,
+    week: g.week,
+    date: g.date,
+    state: g.state,
+    statusDetail: g.statusDetail,
+    home: g.home,
+    away: g.away,
+    winner: g.winner,
+    locked: g.state !== "pre" || new Date(g.date).getTime() <= now,
+    picked,
+  };
+}
+
+// GET /api/weekly?week=N        → games for a single week
+// GET /api/weekly?team=ABBR     → a team's full-season slate (week by week)
+// Both include this user's picks + per-game lock state.
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const week = clampWeek(new URL(req.url).searchParams.get("week"));
 
+  const url = new URL(req.url);
+  const teamParam = url.searchParams.get("team");
+  const now = Date.now();
+
+  if (teamParam) {
+    const team = normalizeAbbr(teamParam);
+    if (!TEAMS[team]) return NextResponse.json({ error: "Unknown team" }, { status: 400 });
+
+    const [schedule, picks] = await Promise.all([
+      getCachedSchedule(SEASON),
+      prisma.weeklyPick.findMany({ where: { userId: user.id, season: SEASON } }),
+    ]);
+    const pickMap = new Map(picks.map((p) => [p.gameId, p.pickedTeam]));
+    const games = schedule
+      .filter((g) => g.home.abbr === team || g.away.abbr === team)
+      .sort((a, b) => a.week - b.week)
+      .map((g) => toView(g, now, pickMap.get(g.id) ?? null));
+
+    return NextResponse.json({ team, season: SEASON, games });
+  }
+
+  const week = clampWeek(url.searchParams.get("week"));
   const [games, picks] = await Promise.all([
     getScoreboard(SEASON, week, 2),
     prisma.weeklyPick.findMany({ where: { userId: user.id, season: SEASON, week } }),
   ]);
-
-  const now = Date.now();
-  const pickMap: Record<string, string> = {};
-  picks.forEach((p) => (pickMap[p.gameId] = p.pickedTeam));
-
-  const view = games.map((g) => ({
-    ...g,
-    locked: g.state !== "pre" || new Date(g.date).getTime() <= now,
-    picked: pickMap[g.id] ?? null,
-  }));
+  const pickMap = new Map(picks.map((p) => [p.gameId, p.pickedTeam]));
+  const view = games.map((g) => toView(g, now, pickMap.get(g.id) ?? null));
 
   return NextResponse.json({ week, season: SEASON, games: view });
 }
 
-// POST /api/weekly  { week, picks: { [gameId]: teamAbbr } }
+// POST /api/weekly  { picks: { [gameId]: teamAbbr }, week? }
+//
+// `week` is an optional fast path for the week view (one scoreboard fetch).
+// Without it (the team view, whose picks span weeks) games are resolved from
+// the cached full-season schedule.
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -45,23 +81,29 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
-  const week = clampWeek(body.week);
   const incoming = (body.picks || {}) as Record<string, string>;
 
-  const games = await getScoreboard(SEASON, week, 2);
-  const byId = new Map(games.map((g) => [g.id, g]));
-  const now = Date.now();
+  let byId: Map<string, Game>;
+  if (body.week != null) {
+    const games = await getScoreboard(SEASON, clampWeek(body.week), 2);
+    byId = new Map(games.map((g) => [g.id, g]));
+  } else {
+    const schedule = await getCachedSchedule(SEASON);
+    byId = new Map(schedule.map((g) => [g.id, g]));
+  }
 
+  const now = Date.now();
   const ops = [];
-  for (const [gameId, team] of Object.entries(incoming)) {
+  for (const [gameId, rawTeam] of Object.entries(incoming)) {
     const g = byId.get(gameId);
     if (!g) continue; // unknown game
     if (g.state !== "pre" || new Date(g.date).getTime() <= now) continue; // locked
+    const team = normalizeAbbr(rawTeam);
     if (team !== g.home.abbr && team !== g.away.abbr) continue; // invalid team
     ops.push(
       prisma.weeklyPick.upsert({
-        where: { userId_season_week_gameId: { userId: user.id, season: SEASON, week, gameId } },
-        create: { userId: user.id, season: SEASON, week, gameId, pickedTeam: team },
+        where: { userId_season_week_gameId: { userId: user.id, season: SEASON, week: g.week, gameId } },
+        create: { userId: user.id, season: SEASON, week: g.week, gameId, pickedTeam: team },
         update: { pickedTeam: team },
       }),
     );

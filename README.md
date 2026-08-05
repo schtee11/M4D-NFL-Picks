@@ -20,8 +20,13 @@ dark, blurple-accented layout with a bottom tab bar.
 - **Lock & bracket** — lock your picks, then the app seeds each conference and
   lets you advance teams through the Wild Card → Divisional → Conference
   Championship → Super Bowl.
-- **Weekly straight-up picks** — pick each game's winner every week; games lock
-  at kickoff, and correct picks score a point.
+- **Weekly straight-up picks** — call games two ways: **by team** (default —
+  pick W/L down a single team's whole schedule) or **by week** (game by game).
+  Games lock at kickoff, and correct picks score a point.
+- **Intertwined & smart** — a fully picked weekly slate sets that team's
+  projected record automatically, overriding the manual seeding. And if a wild
+  card you picked ends up with more wins than the division winner in its own
+  division, the app swaps them so your bracket stays consistent.
 - **Leaderboard** — everyone ranked by points, updated as results come in.
 - **Live NFL data** — schedule, scores, standings, and playoff results come from
   ESPN's public API.
@@ -142,6 +147,20 @@ division winners take seeds 1–4 (ordered by wins), wild cards take 5–7 (orde
 by wins) — a wild card never outseeds a division winner, even with a better
 record. Ties fall back to a deterministic order, so seeding is never random.
 Those seeds drive every bracket matchup (byes, reseeding, etc.).
+
+**Weekly picks feed the seeding.** If you've picked a winner for every game on a
+team's schedule (easy in the weekly view's *by team* mode), that team's record
+is derived from those picks and overrides the manual total — its Seeding row
+shows a **Weekly** badge and is read-only. This all runs server-side in
+`src/lib/sync.ts` and is persisted, so scoring, the leaderboard, and the bracket
+all read the reconciled picks. Reconciliation only happens while your picks are
+still editable; once you lock in (or the deadline passes) predictions are frozen.
+
+**Auto-swap.** A division winner should be the best team in its division. If a
+wild card you picked in the *same division* projects to strictly more wins than
+your chosen division winner, the app promotes the wild card to division winner
+and drops the former winner into that wild-card slot, with a note explaining the
+switch. Ties keep your original pick.
 
 ## Next steps
 
