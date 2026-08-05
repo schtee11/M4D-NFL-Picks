@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { TEAMS, teamName } from "@/lib/teams";
 import { TeamLogo } from "@/components/TeamLogo";
 import { CheckIcon, LockIcon } from "@/components/icons";
@@ -67,14 +68,23 @@ export default function WeeklyScreen() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-        <h4 style={{ margin: 0 }}>Weekly picks</h4>
+        <h4 style={{ margin: 0 }}>Matchups</h4>
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
-      <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
+      <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 10px" }}>
         {mode === "team"
-          ? "Call every game on a team’s schedule. A completed slate sets that team’s record and seeding automatically."
+          ? "Call every game on a team’s schedule. A completed slate sets that team’s record and seeds them in your bracket automatically."
           : "Pick each game’s winner. Games lock at kickoff."}
       </p>
+
+      {/* Escape hatch for anyone who doesn't want to call every game. */}
+      <div className="card elev-sm" style={{ padding: "9px 12px", marginBottom: 14, fontSize: 12.5, opacity: 0.85 }}>
+        Don’t want to pick every game?{" "}
+        <Link href="/picks" style={{ color: "var(--color-accent)", textDecoration: "none" }}>
+          Head to the Bracket tab
+        </Link>{" "}
+        and set win totals by hand.
+      </div>
 
       {mode === "team" ? (
         <TeamMode

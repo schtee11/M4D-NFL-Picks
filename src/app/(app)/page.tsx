@@ -64,25 +64,26 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid-2">
-        {/* Combined prediction flow: picks → seeding → bracket */}
-        <Link href="/picks" className="col-span-all" style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="card elev-sm" style={{ padding: 16 }}>
-            <div className="card-kicker">Your bracket</div>
-            <div className="card-title" style={{ fontSize: 18 }}>
-              {made} / {TOTAL_SEASON_PICKS} picked
-              <span style={{ fontSize: 13, opacity: 0.55, fontWeight: 400 }}> · bracket {bracketStatus.toLowerCase()}</span>
-            </div>
-            <Progress pct={lockable ? bracketPct : picksPct} />
-          </div>
-        </Link>
-
-        {/* Weekly picks link */}
+        {/* Matchups first — picking games feeds the bracket seeding. */}
         <Link href="/weekly" style={{ textDecoration: "none", color: "inherit" }}>
           <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
             <div className="card-kicker">Matchups</div>
             <div className="card-title" style={{ fontSize: 18 }}>
               Pick games by team or week
             </div>
+            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 8 }}>Sets your seeding automatically</div>
+          </div>
+        </Link>
+
+        {/* Combined prediction flow: picks → seeding → bracket */}
+        <Link href="/picks" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
+            <div className="card-kicker">Your bracket</div>
+            <div className="card-title" style={{ fontSize: 18 }}>
+              {made} / {TOTAL_SEASON_PICKS} picked
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 4 }}>Bracket {bracketStatus.toLowerCase()}</div>
+            <Progress pct={lockable ? bracketPct : picksPct} />
           </div>
         </Link>
 

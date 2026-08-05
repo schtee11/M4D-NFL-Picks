@@ -12,13 +12,13 @@ import {
 
 const TABS = [
   { href: "/", label: "Home", Icon: HomeIcon, match: (p: string) => p === "/" },
+  { href: "/weekly", label: "Matchups", Icon: CalendarIcon, match: (p: string) => p.startsWith("/weekly") },
   {
     href: "/picks",
     label: "Bracket",
     Icon: TrophyIcon,
     match: (p: string) => p.startsWith("/picks") || p.startsWith("/bracket"),
   },
-  { href: "/weekly", label: "Matchups", Icon: CalendarIcon, match: (p: string) => p.startsWith("/weekly") },
   { href: "/league", label: "League", Icon: PeopleIcon, match: (p: string) => p.startsWith("/league") },
 ];
 
