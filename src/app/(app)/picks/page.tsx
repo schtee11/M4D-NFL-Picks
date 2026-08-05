@@ -1,7 +1,7 @@
-import PicksScreen from "@/components/screens/PicksScreen";
+import PredictionScreen from "@/components/screens/PredictionScreen";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <PicksScreen />;
+  return <PredictionScreen />;
 }

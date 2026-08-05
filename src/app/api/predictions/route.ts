@@ -72,8 +72,10 @@ export async function POST(req: Request) {
         });
       }
       case "saveBracket": {
-        if (!entry.locked) {
-          return NextResponse.json({ error: "Lock your picks first." }, { status: 409 });
+        // The bracket is part of the same editable flow as the picks now, so it
+        // follows the same freeze rules: editable until you lock or the deadline.
+        if (entry.locked || frozen) {
+          return NextResponse.json({ error: "Picks are locked." }, { status: 409 });
         }
         const bracketPicks = (body.bracketPicks || {}) as Record<string, string>;
         const updated = await saveBracket(user.id, bracketPicks);

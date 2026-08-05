@@ -5,7 +5,6 @@ import Link from "next/link";
 import { APP_BADGE, APP_NAME } from "@/lib/config";
 import {
   HomeIcon,
-  GridIcon,
   TrophyIcon,
   PeopleIcon,
   CalendarIcon,
@@ -13,8 +12,12 @@ import {
 
 const TABS = [
   { href: "/", label: "Home", Icon: HomeIcon, match: (p: string) => p === "/" },
-  { href: "/picks", label: "Picks", Icon: GridIcon, match: (p: string) => p.startsWith("/picks") },
-  { href: "/bracket", label: "Bracket", Icon: TrophyIcon, match: (p: string) => p.startsWith("/bracket") },
+  {
+    href: "/picks",
+    label: "Bracket",
+    Icon: TrophyIcon,
+    match: (p: string) => p.startsWith("/picks") || p.startsWith("/bracket"),
+  },
   { href: "/weekly", label: "Matchups", Icon: CalendarIcon, match: (p: string) => p.startsWith("/weekly") },
   { href: "/league", label: "League", Icon: PeopleIcon, match: (p: string) => p.startsWith("/league") },
 ];

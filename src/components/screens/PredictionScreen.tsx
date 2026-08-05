@@ -1,0 +1,574 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { DIVISIONS, Conference, divisionsFor, teamName } from "@/lib/teams";
+import {
+  SeasonPicks,
+  emptyPicks,
+  canLock,
+  picksMade,
+  getSeeds,
+  projectedWins,
+  REGULAR_SEASON_GAMES,
+  TOTAL_SEASON_PICKS,
+  Matchup,
+  getByeSeed,
+  getWcMatchups,
+  getDivMatchups,
+  getConfMatchup,
+  getSuperBowl,
+  champion,
+} from "@/lib/bracket";
+import { TeamOption, MatchupSide } from "@/components/TeamPickButton";
+import { TeamLogo } from "@/components/TeamLogo";
+import { TrophyIcon, ChevronRight } from "@/components/icons";
+
+interface Swap {
+  division: string;
+  promoted: string;
+  demoted: string;
+}
+
+const kicker: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: ".06em",
+  textTransform: "uppercase",
+  opacity: 0.5,
+};
+
+export default function PredictionScreen() {
+  const router = useRouter();
+  const [picks, setPicks] = useState<SeasonPicks>(emptyPicks());
+  const [locked, setLocked] = useState(false);
+  const [deadlinePassed, setDeadline] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [derivedTeams, setDerivedTeams] = useState<string[]>([]);
+  const [swaps, setSwaps] = useState<Swap[]>([]);
+
+  useEffect(() => {
+    fetch("/api/predictions")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.picks) setPicks(d.picks);
+        setLocked(!!d.locked);
+        setDeadline(!!d.deadlinePassed);
+        setDerivedTeams(d.derivedTeams || []);
+        setSwaps(d.swaps || []);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const editable = !locked && !deadlinePassed;
+
+  const persistPicks = useCallback(async (next: SeasonPicks) => {
+    setSaving(true);
+    const res = await fetch("/api/predictions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        op: "savePicks",
+        divisionPicks: next.divisionPicks,
+        wildcards: next.wildcards,
+        records: next.records,
+      }),
+    }).catch(() => null);
+    if (res && res.ok) {
+      const d = await res.json().catch(() => null);
+      if (d?.picks) {
+        setPicks(d.picks);
+        setDerivedTeams(d.derivedTeams || []);
+        setSwaps(d.swaps || []);
+      }
+    }
+    setSaving(false);
+  }, []);
+
+  const persistBracket = useCallback(async (next: SeasonPicks) => {
+    setSaving(true);
+    await fetch("/api/predictions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op: "saveBracket", bracketPicks: next.bracketPicks }),
+    }).catch(() => {});
+    setSaving(false);
+  }, []);
+
+  function setWins(teamId: string, wins: number) {
+    if (!editable) return;
+    const clamped = Math.min(REGULAR_SEASON_GAMES, Math.max(0, wins));
+    setPicks((s) => {
+      const next = { ...s, records: { ...s.records, [teamId]: clamped } };
+      persistPicks(next);
+      return next;
+    });
+  }
+
+  function pickDivisionWinner(divKey: string, teamId: string) {
+    if (!editable) return;
+    setPicks((s) => {
+      const divisionPicks = { ...s.divisionPicks, [divKey]: teamId };
+      const winners = new Set(Object.values(divisionPicks));
+      const wildcards = {
+        AFC: s.wildcards.AFC.filter((t) => !winners.has(t)),
+        NFC: s.wildcards.NFC.filter((t) => !winners.has(t)),
+      };
+      const next = { ...s, divisionPicks, wildcards };
+      persistPicks(next);
+      return next;
+    });
+  }
+
+  function toggleWildcard(conf: Conference, teamId: string) {
+    if (!editable) return;
+    setPicks((s) => {
+      const cur = s.wildcards[conf];
+      let nextArr: string[];
+      if (cur.includes(teamId)) nextArr = cur.filter((t) => t !== teamId);
+      else if (cur.length < 3) nextArr = [...cur, teamId];
+      else nextArr = cur;
+      const next = { ...s, wildcards: { ...s.wildcards, [conf]: nextArr } };
+      persistPicks(next);
+      return next;
+    });
+  }
+
+  function pickBracketWinner(key: string, teamId: string) {
+    if (!editable) return;
+    setPicks((s) => {
+      const next = { ...s, bracketPicks: { ...s.bracketPicks, [key]: teamId } };
+      persistBracket(next);
+      return next;
+    });
+  }
+
+  async function doLock() {
+    const res = await fetch("/api/predictions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op: "lock" }),
+    });
+    if (res.ok) {
+      setLocked(true);
+      router.refresh();
+    }
+  }
+
+  async function doUnlock() {
+    const res = await fetch("/api/predictions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op: "unlock" }),
+    });
+    if (res.ok) {
+      setLocked(false);
+      router.refresh();
+    }
+  }
+
+  if (loading) return <Loading />;
+
+  const made = picksMade(picks);
+  const lockable = canLock(picks);
+
+  const wildcardView = (conf: Conference) => {
+    const divs = divisionsFor(conf);
+    const winners = new Set(divs.map((d) => picks.divisionPicks[d.key]).filter(Boolean));
+    const remaining = divs.flatMap((d) => d.teams).filter((id) => !winners.has(id));
+    return { remaining, count: picks.wildcards[conf].length };
+  };
+
+  return (
+    <div>
+      <h4 style={{ margin: "0 0 2px" }}>Your bracket</h4>
+      <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
+        Pick your playoff field, seed it, and build the bracket — all in one place.
+      </p>
+
+      {/* ── Step 1 · Division winners ─────────────────────────────────── */}
+      <SectionLabel n={1} title="Division winners" hint="Pick one winner in each division." />
+      {DIVISIONS.map((d) => (
+        <div key={d.key} style={{ marginBottom: 16 }}>
+          <div style={{ ...kicker, marginBottom: 8 }}>{d.key}</div>
+          <div className="team-grid">
+            {d.teams.map((id) => (
+              <TeamOption
+                key={id}
+                id={id}
+                selected={picks.divisionPicks[d.key] === id}
+                disabled={!editable}
+                onClick={() => pickDivisionWinner(d.key, id)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* ── Step 2 · Wildcards ────────────────────────────────────────── */}
+      <SectionLabel n={2} title="Wildcards" hint="Pick 3 wildcard teams per conference." top={20} />
+      {(["AFC", "NFC"] as Conference[]).map((conf) => {
+        const wv = wildcardView(conf);
+        return (
+          <div key={conf} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={kicker}>{conf} wildcards</span>
+              <span style={{ fontSize: 12, opacity: wv.count >= 3 ? 1 : 0.6, color: wv.count >= 3 ? "var(--color-accent)" : undefined }}>
+                {wv.count} / 3
+              </span>
+            </div>
+            <div className="team-grid">
+              {wv.remaining.map((id) => {
+                const sel = picks.wildcards[conf].includes(id);
+                const full = wv.count >= 3;
+                return (
+                  <TeamOption
+                    key={id}
+                    id={id}
+                    selected={sel}
+                    disabled={!editable || (!sel && full)}
+                    dimmed={!sel && full}
+                    onClick={() => toggleWildcard(conf, id)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Auto-swap notice */}
+      {swaps.length > 0 && (
+        <div className="card elev-sm" style={{ padding: "10px 12px", marginTop: 16, borderColor: "var(--color-accent)" }}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            {swaps.map((s) => (
+              <div key={s.division}>
+                <strong>{teamName(s.promoted)}</strong> out-won <strong>{teamName(s.demoted)}</strong> in the{" "}
+                {s.division}, so they swapped — {teamName(s.promoted)} is now your division winner.
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3 · Seeding (slate-primary) ──────────────────────────── */}
+      {lockable && (
+        <>
+          <SectionLabel
+            n={3}
+            title="Seeding"
+            hint="Set each team’s record to seed your bracket. Best way: call their whole slate in Matchups — a completed slate seeds them automatically. Or set a quick win total."
+            top={24}
+          />
+          {(["AFC", "NFC"] as Conference[]).map((conf) => (
+            <div key={conf} style={{ marginBottom: 16 }}>
+              <div style={{ ...kicker, marginBottom: 8 }}>{conf} seeds</div>
+              {getSeeds(conf, picks).map((s) => (
+                <SeedRow
+                  key={s.team}
+                  seed={s.seed}
+                  teamId={s.team}
+                  wins={projectedWins(picks, s.team)}
+                  editable={editable}
+                  auto={derivedTeams.includes(s.team)}
+                  onChange={(w) => setWins(s.team, w)}
+                />
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── Step 4 · Playoff bracket (inline) ─────────────────────────── */}
+      {lockable && (
+        <>
+          <SectionLabel n={4} title="Playoff bracket" hint="Tap a team to advance them." top={24} />
+          <FullBracket picks={picks} editable={editable} onPick={pickBracketWinner} />
+        </>
+      )}
+
+      {!lockable && (
+        <div className="card elev-sm" style={{ padding: 18, textAlign: "center", marginTop: 20 }}>
+          <div style={{ fontSize: 13, opacity: 0.7 }}>
+            Finish your 8 division winners and 6 wildcards to seed and build your bracket.
+          </div>
+        </div>
+      )}
+
+      {/* Lock / edit CTAs */}
+      <div className="cta-narrow">
+        {deadlinePassed && !locked ? (
+          <div className="card elev-sm" style={{ padding: "12px 14px", marginTop: 8 }}>
+            <span style={{ fontSize: 13, opacity: 0.7 }}>The deadline has passed — picks can no longer be changed.</span>
+          </div>
+        ) : locked ? (
+          <div
+            className="card elev-sm"
+            style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}
+          >
+            <span style={{ fontSize: 13, color: "var(--color-accent-300)" }}>Picks are locked in.</span>
+            <button type="button" className="btn btn-ghost" onClick={doUnlock}>
+              Edit picks
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-primary btn-block" disabled={!lockable} onClick={doLock} style={{ marginTop: 8 }}>
+            Lock in picks · {made}/{TOTAL_SEASON_PICKS}
+          </button>
+        )}
+      </div>
+
+      <div style={{ height: 18, marginTop: 6, textAlign: "center" }}>
+        {saving && <span style={{ fontSize: 11, opacity: 0.5 }}>Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ n, title, hint, top = 0 }: { n: number; title: string; hint: string; top?: number }) {
+  return (
+    <div style={{ marginTop: top }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 2px" }}>
+        <span
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 999,
+            background: "var(--color-accent)",
+            color: "var(--color-bg)",
+            fontSize: 11,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "none",
+          }}
+        >
+          {n}
+        </span>
+        <h4 style={{ margin: 0 }}>{title}</h4>
+      </div>
+      <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px", paddingLeft: 28 }}>{hint}</p>
+    </div>
+  );
+}
+
+function SeedRow({
+  seed,
+  teamId,
+  wins,
+  editable,
+  auto,
+  onChange,
+}: {
+  seed: number;
+  teamId: string;
+  wins: number;
+  editable?: boolean;
+  auto?: boolean;
+  onChange: (wins: number) => void;
+}) {
+  const losses = REGULAR_SEASON_GAMES - wins;
+  return (
+    <div className="card elev-sm" style={{ padding: "8px 10px", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 26, fontSize: 12, fontWeight: 600, color: "var(--color-accent)", flex: "none" }}>#{seed}</span>
+        <TeamLogo id={teamId} size={20} />
+        <span style={{ flex: 1, fontSize: 13 }}>{teamName(teamId)}</span>
+        <span style={{ fontSize: 12, opacity: 0.6, width: 42, textAlign: "right" }}>
+          {wins}–{losses}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+        {auto ? (
+          <span
+            title="Set from your completed weekly slate"
+            style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "var(--color-accent)", color: "#fff" }}
+          >
+            ✓ Slate set from Matchups
+          </span>
+        ) : (
+          <>
+            <Link
+              href={`/weekly?team=${teamId}`}
+              style={{ fontSize: 12, color: "var(--color-accent)", display: "inline-flex", alignItems: "center", gap: 2, textDecoration: "none" }}
+            >
+              Pick all games <ChevronRight size={12} />
+            </Link>
+            <span style={{ fontSize: 11, opacity: 0.4 }}>or</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!editable || wins <= 0}
+                onClick={() => onChange(wins - 1)}
+                style={{ padding: "2px 9px", minWidth: 30 }}
+                aria-label={`Fewer wins for ${teamName(teamId)}`}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!editable || wins >= REGULAR_SEASON_GAMES}
+                onClick={() => onChange(wins + 1)}
+                style={{ padding: "2px 9px", minWidth: 30 }}
+                aria-label={`More wins for ${teamName(teamId)}`}
+              >
+                +
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Playoff bracket rendering (ported from the standalone bracket screen) ─────
+function FullBracket({
+  picks,
+  editable,
+  onPick,
+}: {
+  picks: SeasonPicks;
+  editable: boolean;
+  onPick: (key: string, team: string) => void;
+}) {
+  const sb = getSuperBowl(picks);
+  const champ = champion(picks);
+  return (
+    <div>
+      <div className="bracket-cols">
+        {(["AFC", "NFC"] as Conference[]).map((conf) => (
+          <ConferenceColumn key={conf} conf={conf} picks={picks} editable={editable} onPick={onPick} />
+        ))}
+      </div>
+
+      <div className="sb-wrap">
+        {sb && (
+          <>
+            <div style={{ ...kicker, margin: "20px 0 8px", textAlign: "center" }}>Super Bowl</div>
+            <div className="card elev-md" style={{ padding: 16, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <SBSide label="AFC Champion" id={sb.teamA} selected={sb.winner === sb.teamA} onClick={() => editable && onPick("SB", sb.teamA)} />
+                <div style={{ alignSelf: "center", fontSize: 11, opacity: 0.4 }}>VS</div>
+                <SBSide label="NFC Champion" id={sb.teamB} selected={sb.winner === sb.teamB} onClick={() => editable && onPick("SB", sb.teamB)} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {champ && (
+          <div className="card elev-md" style={{ padding: 20, marginTop: 12, textAlign: "center", borderColor: "var(--color-accent)" }}>
+            <div style={{ color: "var(--color-accent)", marginBottom: 8, display: "flex", justifyContent: "center" }}>
+              <TrophyIcon size={26} style={{ strokeWidth: 1.7 }} />
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>
+              Super Bowl Champion
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 500 }}>{teamName(champ)}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConferenceColumn({
+  conf,
+  picks,
+  editable,
+  onPick,
+}: {
+  conf: Conference;
+  picks: SeasonPicks;
+  editable: boolean;
+  onPick: (key: string, team: string) => void;
+}) {
+  const bye = getByeSeed(conf, picks)!;
+  const wc = getWcMatchups(conf, picks);
+  const div = getDivMatchups(conf, picks);
+  const cm = getConfMatchup(conf, picks);
+
+  return (
+    <div>
+      <div style={{ ...kicker, margin: "0 0 8px" }}>{conf} · Wild Card</div>
+      <div className="card elev-sm" style={{ padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <TeamLogo id={bye.team} size={22} />
+        <span style={{ flex: 1, fontSize: 13 }}>No. 1 {teamName(bye.team)}</span>
+        <span className="tag tag-neutral" style={{ fontSize: 10 }}>Bye</span>
+      </div>
+      {wc.map((m) => (
+        <MatchCard key={m.key} m={m} editable={editable} onPick={onPick} />
+      ))}
+
+      {div && (
+        <>
+          <div style={{ ...kicker, margin: "16px 0 8px" }}>{conf} · Divisional</div>
+          {div.map((m) => (
+            <MatchCard key={m.key} m={m} editable={editable} onPick={onPick} />
+          ))}
+        </>
+      )}
+
+      {cm && (
+        <>
+          <div style={{ ...kicker, margin: "16px 0 8px" }}>{conf} Championship</div>
+          <MatchCard m={cm} editable={editable} onPick={onPick} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function MatchCard({ m, editable, onPick }: { m: Matchup; editable: boolean; onPick: (key: string, team: string) => void }) {
+  return (
+    <div className="card elev-sm" style={{ padding: 10, marginBottom: 8, flexDirection: "row", gap: 8 }}>
+      <MatchupSide id={m.teamA} seed={m.seedA} selected={m.winner === m.teamA} onClick={() => editable && onPick(m.key, m.teamA)} />
+      <MatchupSide id={m.teamB} seed={m.seedB} selected={m.winner === m.teamB} onClick={() => editable && onPick(m.key, m.teamB)} />
+    </div>
+  );
+}
+
+function SBSide({ label, id, selected, onClick }: { label: string; id: string; selected: boolean; onClick: () => void }) {
+  return (
+    <div style={{ flex: 1, textAlign: "center" }}>
+      <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>{label}</div>
+      <button
+        type="button"
+        onClick={onClick}
+        className={"sel-btn" + (selected ? " is-selected" : "")}
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+          padding: "14px 8px",
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--color-divider)",
+          background: "var(--color-bg)",
+          cursor: "pointer",
+          color: "var(--color-text)",
+        }}
+      >
+        <span className="pick-fill" />
+        <span className="pick-ring" />
+        <TeamLogo id={id} size={40} />
+        <span style={{ position: "relative", fontSize: 13 }}>{teamName(id)}</span>
+      </button>
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+      <div className="spin" />
+    </div>
+  );
+}

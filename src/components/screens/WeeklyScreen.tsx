@@ -26,6 +26,15 @@ export default function WeeklyScreen() {
   const [mode, setMode] = useState<Mode>("team");
   const [team, setTeam] = useState<string>("BUF");
   const [week, setWeek] = useState(1);
+
+  // Deep link from the seeding step (/weekly?team=KC) preselects that team.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("team");
+    if (t && TEAMS[t.toUpperCase()]) {
+      setMode("team");
+      setTeam(t.toUpperCase());
+    }
+  }, []);
   const [games, setGames] = useState<GameVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

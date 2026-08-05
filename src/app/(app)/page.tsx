@@ -18,23 +18,20 @@ export default async function Dashboard() {
   const user = await getCurrentUser();
   const entry = user ? await getEntry(user.id) : null;
   const picks = parseEntry(entry);
-  const locked = !!entry?.locked;
   const passed = deadlinePassed();
 
   const made = picksMade(picks);
   const picksPct = Math.round((made / TOTAL_SEASON_PICKS) * 100);
   const lockable = canLock(picks);
   const bMade = bracketMadeCount(picks);
-  const bracketPct = locked && lockable ? Math.round((bMade / TOTAL_BRACKET_GAMES) * 100) : 0;
-  const bracketStatus = !locked
-    ? "Finish your picks first"
-    : !lockable
-      ? "Incomplete"
-      : bMade === 0
-        ? "Not started"
-        : bMade === TOTAL_BRACKET_GAMES
-          ? "Complete"
-          : "In progress";
+  const bracketPct = lockable ? Math.round((bMade / TOTAL_BRACKET_GAMES) * 100) : 0;
+  const bracketStatus = !lockable
+    ? "Not started"
+    : bMade === 0
+      ? "Not started"
+      : bMade === TOTAL_BRACKET_GAMES
+        ? "Complete"
+        : "In progress";
 
   const rows = await buildLeaderboard();
   const topThree = rows.slice(0, 3);
@@ -67,25 +64,15 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid-2">
-        {/* Division & wildcards progress */}
-        <Link href="/picks" style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
-            <div className="card-kicker">Division winners &amp; wildcards</div>
+        {/* Combined prediction flow: picks → seeding → bracket */}
+        <Link href="/picks" className="col-span-all" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16 }}>
+            <div className="card-kicker">Your bracket</div>
             <div className="card-title" style={{ fontSize: 18 }}>
               {made} / {TOTAL_SEASON_PICKS} picked
+              <span style={{ fontSize: 13, opacity: 0.55, fontWeight: 400 }}> · bracket {bracketStatus.toLowerCase()}</span>
             </div>
-            <Progress pct={picksPct} />
-          </div>
-        </Link>
-
-        {/* Bracket progress */}
-        <Link href="/bracket" style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
-            <div className="card-kicker">Playoff bracket</div>
-            <div className="card-title" style={{ fontSize: 18 }}>
-              {bracketStatus}
-            </div>
-            <Progress pct={bracketPct} />
+            <Progress pct={lockable ? bracketPct : picksPct} />
           </div>
         </Link>
 
