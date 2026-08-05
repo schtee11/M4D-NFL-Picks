@@ -9,7 +9,10 @@
 
 import { normalizeAbbr, Conference, DIVISIONS } from "./teams";
 
-const BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
+// NOTE: the classic `site.api.espn.com` host 403-blocks datacenter IPs (e.g.
+// Railway). The `site.web.api.espn.com` host serves the identical response
+// shape and is reachable from servers, so we use it instead.
+const BASE = "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl";
 
 export type GameState = "pre" | "in" | "post";
 
