@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { TrophyIcon } from "@/components/icons";
+import { APP_NAME } from "@/lib/config";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function LoginPage() {
             <TrophyIcon size={19} style={{ strokeWidth: 1.9 }} />
           </span>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 500 }}>Gridiron Picks</div>
+            <div style={{ fontSize: 18, fontWeight: 500 }}>{APP_NAME}</div>
             <div style={{ fontSize: 12, opacity: 0.6 }}>Playoff bracket predictions</div>
           </div>
         </div>

@@ -1,8 +1,8 @@
 // App-wide configuration, driven by environment variables with sensible
 // defaults so the app runs with zero config in development.
 
-export const APP_NAME = "Gridiron Picks";
-export const APP_BADGE = "GP";
+export const APP_NAME = "M4D NFL Picks";
+export const APP_BADGE = "M4D";
 
 export const LEAGUE_NAME = process.env.LEAGUE_NAME || "The Pigskin Pickers";
 

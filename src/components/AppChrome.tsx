@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { APP_BADGE } from "@/lib/config";
+import { APP_BADGE, APP_NAME } from "@/lib/config";
 import {
   HomeIcon,
   GridIcon,
@@ -15,7 +15,7 @@ const TABS = [
   { href: "/", label: "Home", Icon: HomeIcon, match: (p: string) => p === "/" },
   { href: "/picks", label: "Picks", Icon: GridIcon, match: (p: string) => p.startsWith("/picks") },
   { href: "/bracket", label: "Bracket", Icon: TrophyIcon, match: (p: string) => p.startsWith("/bracket") },
-  { href: "/weekly", label: "Weekly", Icon: CalendarIcon, match: (p: string) => p.startsWith("/weekly") },
+  { href: "/weekly", label: "Matchups", Icon: CalendarIcon, match: (p: string) => p.startsWith("/weekly") },
   { href: "/league", label: "League", Icon: PeopleIcon, match: (p: string) => p.startsWith("/league") },
 ];
 
@@ -62,7 +62,7 @@ export default function AppChrome({
             >
               {APP_BADGE}
             </span>
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Gridiron Picks</span>
+            <span style={{ fontSize: 15, fontWeight: 500 }}>{APP_NAME}</span>
           </div>
 
           {/* Desktop top nav (hidden on mobile) */}

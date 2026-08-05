@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { TEAMS, teamName } from "@/lib/teams";
 import { TeamLogo } from "@/components/TeamLogo";
 import { CheckIcon, LockIcon } from "@/components/icons";
@@ -131,6 +131,9 @@ function TeamMode({
   loading: boolean;
   onPick: (gameId: string, pickedTeam: string, week: number) => void;
 }) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const nudge = (dir: number) => scrollerRef.current?.scrollBy({ left: dir * 220, behavior: "smooth" });
+
   const decided = games.filter((g) => g.picked);
   const wins = decided.filter((g) => g.picked === team).length;
   const losses = decided.length - wins;
@@ -138,27 +141,48 @@ function TeamMode({
 
   return (
     <div>
-      {/* Team selector */}
-      <div className="team-scroller" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
-        {TEAM_IDS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onTeam(id)}
-            aria-label={teamName(id)}
-            className="btn"
-            style={{
-              flex: "none",
-              padding: 5,
-              borderRadius: "var(--radius-sm)",
-              border: `1px solid ${id === team ? "var(--color-accent)" : "var(--color-divider)"}`,
-              background: id === team ? "var(--color-accent-100, rgba(0,0,0,0.04))" : "var(--color-bg)",
-              opacity: id === team ? 1 : 0.6,
-            }}
-          >
-            <TeamLogo id={id} size={26} />
-          </button>
-        ))}
+      {/* Team selector — scroll the strip with the arrows or by swiping */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 12 }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => nudge(-1)}
+          aria-label="Scroll teams left"
+          style={{ flex: "none", padding: "6px 8px" }}
+        >
+          ‹
+        </button>
+        <div ref={scrollerRef} className="team-scroller" style={{ display: "flex", gap: 6, overflowX: "auto", flex: 1, paddingBottom: 6, scrollSnapType: "x proximity" }}>
+          {TEAM_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onTeam(id)}
+              aria-label={teamName(id)}
+              className="btn"
+              style={{
+                flex: "none",
+                scrollSnapAlign: "start",
+                padding: 5,
+                borderRadius: "var(--radius-sm)",
+                border: `1px solid ${id === team ? "var(--color-accent)" : "var(--color-divider)"}`,
+                background: id === team ? "var(--color-accent-100, rgba(0,0,0,0.04))" : "var(--color-bg)",
+                opacity: id === team ? 1 : 0.6,
+              }}
+            >
+              <TeamLogo id={id} size={26} />
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => nudge(1)}
+          aria-label="Scroll teams right"
+          style={{ flex: "none", padding: "6px 8px" }}
+        >
+          ›
+        </button>
       </div>
 
       {/* Selected team header + running record */}

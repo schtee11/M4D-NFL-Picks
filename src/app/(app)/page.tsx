@@ -92,9 +92,9 @@ export default async function Dashboard() {
         {/* Weekly picks link */}
         <Link href="/weekly" style={{ textDecoration: "none", color: "inherit" }}>
           <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
-            <div className="card-kicker">Weekly picks</div>
+            <div className="card-kicker">Matchups</div>
             <div className="card-title" style={{ fontSize: 18 }}>
-              Pick this week&apos;s winners
+              Pick games by team or week
             </div>
           </div>
         </Link>
