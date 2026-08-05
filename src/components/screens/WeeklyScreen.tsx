@@ -59,15 +59,12 @@ function fmtRest(g: GameVM): string | null {
   return `Rest ${g.away.abbr} ${a} · ${g.home.abbr} ${h}`;
 }
 
-// The supporting detail line shared by both views: betting line, then rest.
-// (Kickoff/status lives in the header.) Returns [] when there's nothing to show.
-function gameMeta(g: GameVM): string[] {
-  const parts: string[] = [];
-  const line = fmtLine(g.odds);
-  if (line) parts.push(line);
-  const rest = fmtRest(g);
-  if (rest) parts.push(rest);
-  return parts;
+// Supporting data for a game card, in display-precedence order:
+// kickoff/status, then betting line, then rest. Cards drop these into the four
+// corners (upper-left → upper-right → lower-left → lower-right) after any
+// primary label. Missing values are omitted so corners fill without gaps.
+function supportData(g: GameVM): string[] {
+  return [fmtStatus(g), fmtLine(g.odds), fmtRest(g)].filter((x): x is string => Boolean(x));
 }
 
 export default function WeeklyScreen() {
@@ -307,7 +304,7 @@ function TeamGameCard({
 
   return (
     <GameShell
-      header={
+      primary={
         <>
           <span style={{ opacity: 0.5 }}>Wk {g.week}</span>{" "}
           <span style={{ opacity: 0.9 }}>
@@ -315,9 +312,8 @@ function TeamGameCard({
           </span>
         </>
       }
-      status={fmtStatus(g)}
+      data={supportData(g)}
       locked={g.locked}
-      meta={gameMeta(g)}
     >
       <div className="wl-toggle" role="group" aria-label={`Pick win or loss for ${teamName(team)}`}>
         <Seg state={winState} disabled={g.locked} pressed={pickedWin} onClick={() => onPick(g.id, team, g.week)}>
@@ -377,7 +373,7 @@ function WeekMode({
 
 function GameCard({ g, onPick }: { g: GameVM; onPick: (id: string, team: string) => void }) {
   return (
-    <GameShell status={fmtStatus(g)} locked={g.locked} meta={gameMeta(g)}>
+    <GameShell data={supportData(g)} locked={g.locked}>
       <div className="wl-toggle" role="group" aria-label="Pick the winner">
         <TeamSeg g={g} team={g.away.abbr} score={g.away.score} onPick={onPick} away />
         <TeamSeg g={g} team={g.home.abbr} score={g.home.score} onPick={onPick} />
@@ -412,7 +408,7 @@ function TeamSeg({
         {away ? "@ " : ""}
         {teamName(team)}
       </span>
-      {score != null && <span style={{ fontWeight: 600 }}>{score}</span>}
+      {g.state !== "pre" && score != null && <span style={{ fontWeight: 600 }}>{score}</span>}
       {check(state)}
     </Seg>
   );
@@ -421,41 +417,42 @@ function TeamSeg({
 // ── Shared compact game-card primitives (used by both views) ─────────────────
 type SegState = "" | "on" | "correct" | "wrong";
 
-// Card frame: a top row with an optional label (left) and the kickoff/status
-// pinned top-right, the picker in the middle, and a slim supporting-data row.
+// Card frame with a fixed data precedence: a bright primary label (when given)
+// takes the upper-left, then the supporting values fill the remaining corners
+// in order — upper-left → upper-right → lower-left → lower-right. The picker
+// sits between the header and footer rows.
 function GameShell({
-  header,
-  status,
+  primary,
+  data,
   locked,
-  meta,
   children,
 }: {
-  header?: React.ReactNode;
-  status: string;
+  primary?: React.ReactNode;
+  data: string[];
   locked?: boolean;
-  meta: string[];
   children: React.ReactNode;
 }) {
+  const slots: React.ReactNode[] = primary != null ? [primary, ...data] : [...data];
+  const [ul, ur, ll, lr] = slots;
+  const dim: React.CSSProperties = { fontSize: 11, opacity: 0.55 };
+  const ellipsis: React.CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+
   return (
     <div className="card elev-sm" style={{ padding: "9px 11px", gap: 7, marginBottom: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 500 }}>
-          {header}
-        </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flex: "none", fontSize: 11, opacity: 0.55, whiteSpace: "nowrap" }}>
-          <span>{status}</span>
-          {locked && <LockIcon size={12} />}
-        </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 15 }}>
+        <span style={{ flex: 1, ...ellipsis, ...(primary != null ? { fontSize: 12, fontWeight: 500 } : dim) }}>{ul}</span>
+        {(ur != null || locked) && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flex: "none", whiteSpace: "nowrap", ...dim }}>
+            {ur != null && <span>{ur}</span>}
+            {locked && <LockIcon size={12} />}
+          </span>
+        )}
       </div>
       {children}
-      {meta.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0 6px", fontSize: 11, opacity: 0.55 }}>
-          {meta.map((part, i) => (
-            <span key={i}>
-              {i > 0 && <span style={{ opacity: 0.6 }}>· </span>}
-              {part}
-            </span>
-          ))}
+      {(ll != null || lr != null) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, ...dim }}>
+          <span style={{ flex: 1, ...ellipsis }}>{ll}</span>
+          {lr != null && <span style={{ flex: "none", whiteSpace: "nowrap" }}>{lr}</span>}
         </div>
       )}
     </div>
