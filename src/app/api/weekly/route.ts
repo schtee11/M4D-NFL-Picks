@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getScoreboard, Game } from "@/lib/espn";
+import { getScoreboard, restDaysByGame, Game } from "@/lib/espn";
 import { getCachedSchedule } from "@/lib/sync";
 import { TEAMS, normalizeAbbr } from "@/lib/teams";
 import { SEASON } from "@/lib/config";
@@ -12,7 +12,12 @@ function clampWeek(w: unknown): number {
   return Math.min(18, Math.max(1, Math.round(n)));
 }
 
-function toView(g: Game, now: number, picked: string | null) {
+function toView(
+  g: Game,
+  now: number,
+  picked: string | null,
+  rest?: { home: number | null; away: number | null },
+) {
   return {
     id: g.id,
     week: g.week,
@@ -22,6 +27,9 @@ function toView(g: Game, now: number, picked: string | null) {
     home: g.home,
     away: g.away,
     winner: g.winner,
+    odds: g.odds,
+    restHome: rest?.home ?? null,
+    restAway: rest?.away ?? null,
     locked: g.state !== "pre" || new Date(g.date).getTime() <= now,
     picked,
   };
@@ -47,21 +55,24 @@ export async function GET(req: Request) {
       prisma.weeklyPick.findMany({ where: { userId: user.id, season: SEASON } }),
     ]);
     const pickMap = new Map(picks.map((p) => [p.gameId, p.pickedTeam]));
+    const rest = restDaysByGame(schedule);
     const games = schedule
       .filter((g) => g.home.abbr === team || g.away.abbr === team)
       .sort((a, b) => a.week - b.week)
-      .map((g) => toView(g, now, pickMap.get(g.id) ?? null));
+      .map((g) => toView(g, now, pickMap.get(g.id) ?? null, rest.get(g.id)));
 
     return NextResponse.json({ team, season: SEASON, games });
   }
 
   const week = clampWeek(url.searchParams.get("week"));
-  const [games, picks] = await Promise.all([
+  const [games, schedule, picks] = await Promise.all([
     getScoreboard(SEASON, week, 2),
+    getCachedSchedule(SEASON), // full schedule powers days-rest
     prisma.weeklyPick.findMany({ where: { userId: user.id, season: SEASON, week } }),
   ]);
   const pickMap = new Map(picks.map((p) => [p.gameId, p.pickedTeam]));
-  const view = games.map((g) => toView(g, now, pickMap.get(g.id) ?? null));
+  const rest = restDaysByGame(schedule);
+  const view = games.map((g) => toView(g, now, pickMap.get(g.id) ?? null, rest.get(g.id)));
 
   return NextResponse.json({ week, season: SEASON, games: view });
 }

@@ -15,6 +15,9 @@ interface GameVM {
   home: { abbr: string; score: number | null };
   away: { abbr: string; score: number | null };
   winner: string | null;
+  odds: { details?: string; overUnder?: number } | null;
+  restHome: number | null;
+  restAway: number | null;
   locked: boolean;
   picked: string | null;
 }
@@ -22,6 +25,33 @@ interface GameVM {
 type Mode = "team" | "week";
 
 const TEAM_IDS = Object.keys(TEAMS);
+
+// "Sun, Sep 14 · 1:05 PM" in the viewer's local time.
+function fmtKick(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const day = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
+// "BUF -3.5 · O/U 48.5" when a line exists, else null.
+function fmtLine(odds: GameVM["odds"]): string | null {
+  if (!odds) return null;
+  const parts: string[] = [];
+  if (odds.details) parts.push(odds.details);
+  if (odds.overUnder != null) parts.push(`O/U ${odds.overUnder}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+const metaRow: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  fontSize: 11,
+  opacity: 0.6,
+  marginTop: 8,
+};
 
 export default function WeeklyScreen() {
   const [mode, setMode] = useState<Mode>("team");
@@ -254,6 +284,9 @@ function TeamGameCard({
   const pickedLoss = g.picked != null && g.picked === opp;
   const settled = g.state === "post" && g.winner != null;
   const actualWin = settled && g.winner === team;
+  const line = fmtLine(g.odds);
+  const teamRest = isHome ? g.restHome : g.restAway;
+  const kick = fmtKick(g.date);
 
   return (
     <div className="card elev-sm" style={{ padding: 12, marginBottom: 8 }}>
@@ -283,6 +316,13 @@ function TeamGameCard({
           onClick={() => onPick(g.id, opp, g.week)}
         />
       </div>
+      {(kick || line || teamRest != null) && (
+        <div style={metaRow}>
+          {kick && <span>{kick}</span>}
+          {line && <span>· {line}</span>}
+          {teamRest != null && <span>· {teamRest}d rest</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -383,10 +423,12 @@ function WeekMode({
 }
 
 function GameCard({ g, onPick }: { g: GameVM; onPick: (id: string, team: string) => void }) {
+  const line = fmtLine(g.odds);
+  const showRest = g.restAway != null || g.restHome != null;
   return (
     <div className="card elev-sm" style={{ padding: 12, marginBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, opacity: 0.55 }}>{g.statusDetail || "Scheduled"}</span>
+        <span style={{ fontSize: 11, opacity: 0.55 }}>{g.statusDetail || fmtKick(g.date) || "Scheduled"}</span>
         {g.locked && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.5 }}>
             <LockIcon size={12} /> Locked
@@ -397,6 +439,18 @@ function GameCard({ g, onPick }: { g: GameVM; onPick: (id: string, team: string)
         <SideBtn game={g} team={g.away.abbr} score={g.away.score} onPick={onPick} />
         <SideBtn game={g} team={g.home.abbr} score={g.home.score} onPick={onPick} home />
       </div>
+      {(line || showRest) && (
+        <div style={metaRow}>
+          {line && <span>{line}</span>}
+          {line && showRest && <span>·</span>}
+          {showRest && (
+            <span>
+              Rest: {g.away.abbr} {g.restAway != null ? `${g.restAway}d` : "—"} · {g.home.abbr}{" "}
+              {g.restHome != null ? `${g.restHome}d` : "—"}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

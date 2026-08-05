@@ -16,6 +16,13 @@ const BASE = "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl";
 
 export type GameState = "pre" | "in" | "post";
 
+// Betting line for a game, when a book has posted one. `details` is ESPN's
+// human string (e.g. "BUF -3.5"); `overUnder` is the total.
+export interface GameOdds {
+  details?: string;
+  overUnder?: number;
+}
+
 export interface Game {
   id: string;
   week: number;
@@ -26,6 +33,7 @@ export interface Game {
   home: { abbr: string; score: number | null };
   away: { abbr: string; score: number | null };
   winner: string | null; // abbr of winner, once final
+  odds: GameOdds | null; // betting line, when available
 }
 
 // A browser-like User-Agent — ESPN's edge returns 403 to some non-browser
@@ -77,6 +85,15 @@ function parseGames(events: any[], week: number, seasonType: number): Game[] {
       else if (homeScore != null && awayScore != null && homeScore !== awayScore)
         winner = homeScore > awayScore ? homeAbbr : awayAbbr;
     }
+    // Betting line, when a provider has posted one for this game.
+    const oddsRaw = comp?.odds?.[0];
+    let odds: GameOdds | null = null;
+    if (oddsRaw) {
+      const details = typeof oddsRaw.details === "string" ? oddsRaw.details : undefined;
+      const ou = oddsRaw.overUnder != null ? Number(oddsRaw.overUnder) : undefined;
+      const overUnder = ou != null && Number.isFinite(ou) ? ou : undefined;
+      if (details || overUnder != null) odds = { details, overUnder };
+    }
     games.push({
       id: String(ev.id),
       week,
@@ -87,6 +104,7 @@ function parseGames(events: any[], week: number, seasonType: number): Game[] {
       home: { abbr: homeAbbr, score: homeScore },
       away: { abbr: awayAbbr, score: awayScore },
       winner,
+      odds,
     });
   }
   // Sort by kickoff time for stable display.
@@ -123,6 +141,36 @@ export async function getSeasonSchedule(season: number): Promise<Game[]> {
   const weeks = Array.from({ length: 18 }, (_, i) => i + 1);
   const perWeek = await Promise.all(weeks.map((w) => getScoreboard(season, w, 2)));
   return perWeek.flat();
+}
+
+// Days of rest each team has going into each game — the gap since that team's
+// previous game. Returns a map of gameId → { home, away } days (null when there
+// is no prior game, e.g. Week 1). Computed from the full schedule.
+export function restDaysByGame(games: Game[]): Map<string, { home: number | null; away: number | null }> {
+  const DAY = 86_400_000;
+  const byTeam = new Map<string, { id: string; t: number }[]>();
+  for (const g of games) {
+    for (const abbr of [g.home.abbr, g.away.abbr]) {
+      if (!abbr) continue;
+      const arr = byTeam.get(abbr) ?? [];
+      arr.push({ id: g.id, t: new Date(g.date).getTime() });
+      byTeam.set(abbr, arr);
+    }
+  }
+  // For each (team, game), remember the previous game's kickoff.
+  const prev = new Map<string, number>(); // key `${team}:${gameId}`
+  for (const [team, arr] of byTeam) {
+    arr.sort((a, b) => a.t - b.t);
+    for (let i = 1; i < arr.length; i++) prev.set(`${team}:${arr[i].id}`, arr[i - 1].t);
+  }
+  const restFor = (team: string, g: Game): number | null => {
+    const p = prev.get(`${team}:${g.id}`);
+    if (p == null) return null;
+    return Math.round((new Date(g.date).getTime() - p) / DAY);
+  };
+  const out = new Map<string, { home: number | null; away: number | null }>();
+  for (const g of games) out.set(g.id, { home: restFor(g.home.abbr, g), away: restFor(g.away.abbr, g) });
+  return out;
 }
 
 // True once every Week 18 regular-season game is final — i.e. division winners
