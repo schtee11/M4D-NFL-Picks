@@ -122,3 +122,14 @@ export function CloseIcon(props: P) {
     </svg>
   );
 }
+
+export function DownloadIcon(props: P) {
+  const s = props.size ?? 18;
+  return (
+    <svg {...base(s, props)}>
+      <path d="M12 4v11" />
+      <path d="M8 11l4 4 4-4" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}

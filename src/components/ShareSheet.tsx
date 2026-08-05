@@ -5,7 +5,7 @@ import { DIVISIONS, Conference, divisionsFor, teamName } from "@/lib/teams";
 import { SeasonPicks, getSeeds, getSuperBowl, champion, projectedWins } from "@/lib/bracket";
 import { APP_NAME } from "@/lib/config";
 import { TeamLogo } from "@/components/TeamLogo";
-import { TrophyIcon, ShareIcon, CloseIcon, CheckIcon } from "@/components/icons";
+import { TrophyIcon, ShareIcon, CloseIcon, CheckIcon, DownloadIcon } from "@/components/icons";
 
 const kicker: React.CSSProperties = {
   fontSize: 10.5,
@@ -87,6 +87,12 @@ export default function ShareSheet({
     }
   }
 
+  function savePdf() {
+    // A print stylesheet isolates the card; the browser's "Save as PDF"
+    // (or AirPrint on mobile) turns it into a clean document.
+    window.print();
+  }
+
   return (
     <div
       role="dialog"
@@ -105,11 +111,12 @@ export default function ShareSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card elev-md"
+        className="card elev-md share-print"
         style={{ width: "100%", maxWidth: 420, maxHeight: "88dvh", overflowY: "auto", padding: 0 }}
       >
         {/* Header */}
         <div
+          className="share-head"
           style={{
             position: "sticky",
             top: 0,
@@ -127,7 +134,7 @@ export default function ShareSheet({
               {league} · {season}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="btn btn-ghost" aria-label="Close" style={{ padding: 6 }}>
+          <button type="button" onClick={onClose} className="btn btn-ghost share-no-print" aria-label="Close" style={{ padding: 6 }}>
             <CloseIcon size={18} />
           </button>
         </div>
@@ -209,6 +216,7 @@ export default function ShareSheet({
 
         {/* Actions */}
         <div
+          className="share-foot share-no-print"
           style={{
             position: "sticky",
             bottom: 0,
@@ -222,6 +230,9 @@ export default function ShareSheet({
           <button type="button" className="btn btn-secondary" onClick={copy} style={{ flex: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
             {copied ? <CheckIcon size={14} /> : null}
             {copied ? "Copied" : "Copy"}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={savePdf} style={{ flex: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <DownloadIcon size={15} /> PDF
           </button>
           <button type="button" className="btn btn-primary" onClick={share} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <ShareIcon size={16} /> Share
