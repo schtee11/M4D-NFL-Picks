@@ -109,25 +109,27 @@ export function getDivMatchups(conf: Conference, picks: SeasonPicks): Matchup[] 
   const wc = getWcMatchups(conf, picks);
   if (wc.some((m) => !m.winner)) return null;
   const bye = getByeSeed(conf, picks)!;
-  const pool: Seed[] = [
-    bye,
-    ...wc.map((m) => ({ seed: m.winner === m.teamA ? m.seedA : m.seedB, team: m.winner as string })),
-  ];
-  const rest = pool.filter((p) => p.seed !== 1).sort((a, b) => a.seed - b.seed);
+  // The three Wild Card winners join the No. 1 seed. Reseed by seed number:
+  // the No. 1 seed hosts the LOWEST remaining seed (worst survivor), and the
+  // other two survivors play each other (higher seed hosts).
+  const rest = wc
+    .map((m) => ({ seed: m.winner === m.teamA ? m.seedA : m.seedB, team: m.winner as string }))
+    .sort((a, b) => a.seed - b.seed);
+  const worst = rest[rest.length - 1]; // highest seed number = lowest seed
   const matchA: Matchup = {
     key: conf + "_div0",
     seedA: 1,
     teamA: bye.team,
-    seedB: rest[0].seed,
-    teamB: rest[0].team,
+    seedB: worst.seed,
+    teamB: worst.team,
     winner: null,
   };
   const matchB: Matchup = {
     key: conf + "_div1",
-    seedA: rest[1].seed,
-    teamA: rest[1].team,
-    seedB: rest[2].seed,
-    teamB: rest[2].team,
+    seedA: rest[0].seed,
+    teamA: rest[0].team,
+    seedB: rest[1].seed,
+    teamB: rest[1].team,
     winner: null,
   };
   [matchA, matchB].forEach((m) => {
