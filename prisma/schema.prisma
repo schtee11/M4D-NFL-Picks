@@ -1,0 +1,75 @@
+// Prisma schema for M4D NFL Picks.
+//
+// Dev uses SQLite (zero setup). For production, switch `provider` to
+// "postgresql" and point DATABASE_URL at your Postgres instance.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A member of the league.
+model User {
+  id          String   @id @default(cuid())
+  displayName String
+  handle      String   @unique // lowercased displayName, used for login + uniqueness
+  pinHash     String // hashed PIN
+  createdAt   DateTime @default(now())
+
+  seasonEntries SeasonEntry[]
+  weeklyPicks   WeeklyPick[]
+}
+
+// One user's full set of season predictions (division winners, wildcards,
+// and the playoff bracket) for a given season. Stored as JSON so it mirrors
+// the shape the UI works with directly.
+model SeasonEntry {
+  id       String  @id @default(cuid())
+  userId   String
+  season   Int
+  // JSON: { "AFC East": "BUF", ... } — 8 entries when complete.
+  divisionPicks String @default("{}")
+  // JSON: { "AFC": ["...","...","..."], "NFC": [...] }
+  wildcards     String @default("{\"AFC\":[],\"NFC\":[]}")
+  // JSON: { "AFC_wc0": "BUF", ..., "SB": "KC" } — up to 13 entries.
+  bracketPicks  String @default("{}")
+  locked        Boolean  @default(false)
+  lockedAt      DateTime?
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, season])
+}
+
+// One user's pick for a single game in a weekly straight-up pool.
+model WeeklyPick {
+  id         String   @id @default(cuid())
+  userId     String
+  season     Int
+  week       Int
+  gameId     String // ESPN event id
+  pickedTeam String // team abbreviation, e.g. "KC"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, season, week, gameId])
+}
+
+// Cached actual results used for scoring. One row per (season, kind).
+// kind: "standings" (division winners + seeds) or "playoffs" (round winners)
+// or "week:<n>" (final results of a regular-season week).
+model ResultCache {
+  id        String   @id @default(cuid())
+  season    Int
+  kind      String
+  data      String // JSON payload
+  fetchedAt DateTime @default(now())
+
+  @@unique([season, kind])
+}
