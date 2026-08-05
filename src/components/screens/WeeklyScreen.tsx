@@ -288,93 +288,78 @@ function TeamGameCard({
   const teamRest = isHome ? g.restHome : g.restAway;
   const kick = fmtKick(g.date);
 
+  const metaParts = [kick, line, teamRest != null ? `${teamRest}d rest` : null].filter(Boolean);
+
   return (
-    <div className="card elev-sm" style={{ padding: 12, marginBottom: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, opacity: 0.55 }}>
-          Week {g.week} · {isHome ? "vs" : "@"} {teamName(opp)}
+    <div className="card elev-sm" style={{ padding: "9px 11px", gap: 7, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>
+          <span style={{ opacity: 0.5 }}>Wk {g.week}</span>{" "}
+          <span style={{ opacity: 0.9 }}>
+            {isHome ? "vs" : "@"} {teamName(opp)}
+          </span>
         </span>
         {g.locked && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.5 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.5, flex: "none" }}>
             <LockIcon size={12} /> Locked
           </span>
         )}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <WLButton
-          label="Win"
-          selected={pickedWin}
-          disabled={g.locked}
-          result={settled ? (actualWin ? "correct" : pickedWin ? "wrong" : null) : null}
-          onClick={() => onPick(g.id, team, g.week)}
-        />
-        <WLButton
-          label="Loss"
-          selected={pickedLoss}
-          disabled={g.locked}
-          result={settled ? (!actualWin ? "correct" : pickedLoss ? "wrong" : null) : null}
-          onClick={() => onPick(g.id, opp, g.week)}
-        />
-      </div>
-      {(kick || line || teamRest != null) && (
-        <div style={metaRow}>
-          {kick && <span>{kick}</span>}
-          {line && <span>· {line}</span>}
-          {teamRest != null && <span>· {teamRest}d rest</span>}
+      <WLToggle
+        pickedWin={pickedWin}
+        pickedLoss={pickedLoss}
+        disabled={g.locked}
+        settled={settled}
+        actualWin={actualWin}
+        onWin={() => onPick(g.id, team, g.week)}
+        onLoss={() => onPick(g.id, opp, g.week)}
+      />
+      {metaParts.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0 6px", fontSize: 11, opacity: 0.55 }}>
+          {metaParts.map((part, i) => (
+            <span key={i}>
+              {i > 0 && <span style={{ opacity: 0.6 }}>· </span>}
+              {part}
+            </span>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function WLButton({
-  label,
-  selected,
+// Compact segmented Win/Loss picker — one pill, active/graded side fills in.
+function WLToggle({
+  pickedWin,
+  pickedLoss,
   disabled,
-  result,
-  onClick,
+  settled,
+  actualWin,
+  onWin,
+  onLoss,
 }: {
-  label: string;
-  selected: boolean;
+  pickedWin: boolean;
+  pickedLoss: boolean;
   disabled?: boolean;
-  result: "correct" | "wrong" | null;
-  onClick: () => void;
+  settled: boolean;
+  actualWin: boolean;
+  onWin: () => void;
+  onLoss: () => void;
 }) {
-  const borderColor =
-    result === "correct" ? "var(--color-accent)" : result === "wrong" ? "#ff8a8a" : "var(--color-divider)";
+  const winClass = settled ? (actualWin ? "is-correct" : pickedWin ? "is-wrong" : "") : pickedWin ? "is-on" : "";
+  const lossClass = settled ? (!actualWin ? "is-correct" : pickedLoss ? "is-wrong" : "") : pickedLoss ? "is-on" : "";
+
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={"sel-btn" + (selected && !disabled ? " is-selected" : "")}
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        padding: 10,
-        borderRadius: "var(--radius-sm)",
-        border: `1px solid ${borderColor}`,
-        background: "var(--color-bg)",
-        cursor: disabled ? "default" : "pointer",
-        color: "var(--color-text)",
-        fontSize: 13,
-        fontWeight: 500,
-      }}
-    >
-      <span className="pick-fill" style={{ borderRadius: "var(--radius-sm)" }} />
-      <span className="pick-ring" style={{ borderRadius: "var(--radius-sm)" }} />
-      <span style={{ position: "relative" }}>{label}</span>
-      {selected && (
-        <span style={{ position: "relative", color: result === "correct" ? "var(--color-accent)" : "var(--color-neutral-400)" }}>
-          <CheckIcon size={12} />
-        </span>
-      )}
-    </button>
+    <div className="wl-toggle" role="group" aria-label="Pick win or loss">
+      <button type="button" disabled={disabled} onClick={onWin} className={("wl-seg " + winClass).trim()} aria-pressed={pickedWin}>
+        Win
+        {(winClass === "is-on" || winClass === "is-correct") && <CheckIcon size={12} />}
+      </button>
+      <button type="button" disabled={disabled} onClick={onLoss} className={("wl-seg " + lossClass).trim()} aria-pressed={pickedLoss}>
+        Loss
+        {(lossClass === "is-on" || lossClass === "is-correct") && <CheckIcon size={12} />}
+      </button>
+    </div>
   );
 }
 

@@ -272,6 +272,52 @@ button { font-family: var(--font-body); }
   opacity: 1;
   transform: scale(1);
 }
+/* Compact Win/Loss segmented control (Matchups · by team).
+   Two options share one bordered pill; the active/graded side fills in. */
+.wl-toggle {
+  display: flex;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.wl-seg {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-neutral-400);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.wl-seg + .wl-seg { border-left: 1px solid var(--color-divider); }
+.wl-seg svg { display: block; }
+.wl-seg:not(:disabled):hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text);
+}
+.wl-seg:disabled { cursor: default; }
+.wl-seg.is-on,
+.wl-seg.is-correct {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  color: var(--color-accent-100);
+  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+}
+.wl-seg.is-wrong {
+  background: color-mix(in srgb, #ff8a8a 16%, transparent);
+  color: #ffdada;
+  box-shadow: inset 0 0 0 1.5px #ff8a8a;
+}
+
 /* A generic selectable button (bracket / super bowl / weekly sides). */
 .sel-btn {
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease,
