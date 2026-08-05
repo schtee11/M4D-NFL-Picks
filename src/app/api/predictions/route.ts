@@ -10,10 +10,11 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const entry = await getOrCreateEntry(user.id);
-  const frozen = entry.locked || deadlinePassed();
-  // Pull weekly picks into the season projections (override manual W/L for teams
-  // with a completed slate) and auto-swap any out-of-order division winner.
-  const sync = await syncEntry(user.id, frozen, entry);
+  // Only the deadline truly freezes predictions — "locked" is a soft state the
+  // user can toggle any time before then. So keep pulling weekly picks into the
+  // seeding (override manual W/L for completed slates) and auto-swapping
+  // out-of-order division winners even while locked; stop only past the deadline.
+  const sync = await syncEntry(user.id, deadlinePassed(), entry);
   return NextResponse.json({
     picks: sync.picks,
     locked: entry.locked,
