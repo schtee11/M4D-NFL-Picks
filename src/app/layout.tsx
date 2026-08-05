@@ -4,7 +4,7 @@ import { APP_NAME } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: "Pick division winners, wildcards, and the whole playoff bracket to the Super Bowl.",
+  description: "Call the weekly matchups, seed your playoff bracket, and pick a Super Bowl champion.",
 };
 
 export const viewport: Viewport = {

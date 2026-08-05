@@ -60,7 +60,7 @@ export default function LoginPage() {
           </span>
           <div>
             <div style={{ fontSize: 18, fontWeight: 500 }}>{APP_NAME}</div>
-            <div style={{ fontSize: 12, opacity: 0.6 }}>Playoff bracket predictions</div>
+            <div style={{ fontSize: 12, opacity: 0.6 }}>Matchups &amp; playoff bracket</div>
           </div>
         </div>
 

@@ -58,7 +58,7 @@ export default async function LeaguePage() {
       })}
 
       <p style={{ opacity: 0.4, fontSize: 11, textAlign: "center", marginTop: 12 }}>
-        Points are awarded as results come in through the playoffs.
+        Points are awarded as results come in — weekly games through the season, then the playoffs.
       </p>
     </div>
   );

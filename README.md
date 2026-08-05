@@ -1,31 +1,35 @@
-# Gridiron Picks 🏈
+# M4D NFL Picks 🏈
 
-An NFL **playoff-prediction** app for a group of friends. Before the season,
-each member picks the 8 division winners and 6 wild cards, then builds the whole
-playoff bracket all the way to a Super Bowl champion. Everyone's picks are saved
-to a shared database, and a leaderboard scores them against the real results as
-the season and playoffs unfold. There's also an optional **week-by-week**
-straight-up picks pool.
+An NFL prediction app for a group of friends. The flow is **Matchups first**:
+call the weekly games — the easy way is down a single team's whole schedule —
+and a completed slate automatically sets that team's record and seeds it in your
+playoff bracket. From there the **Bracket** page ties it together: pick your 8
+division winners and 6 wild cards, confirm the seeding, build the bracket to a
+Super Bowl champion, and lock. Everyone's picks are saved to a shared database,
+and a leaderboard scores them against the real results as the season and
+playoffs unfold.
 
 The UI is a faithful build of the "Nocturne" design prototype — a mobile-first,
-dark, blurple-accented layout with a bottom tab bar.
+dark, blurple-accented layout with a bottom tab bar (Home · Matchups · Bracket ·
+League).
 
 ## Features
 
 - **Join with a name + PIN** — no email, no OAuth. Right-sized for a private
   league. Same name + PIN logs you back in.
-- **Division winners & wild cards** — pick one winner per division and 3 wild
-  cards per conference (14 picks total). Division winners are excluded from the
-  wild-card pool automatically.
-- **Lock & bracket** — lock your picks, then the app seeds each conference and
-  lets you advance teams through the Wild Card → Divisional → Conference
-  Championship → Super Bowl.
-- **Weekly straight-up picks** — call games two ways: **by team** (default —
-  pick W/L down a single team's whole schedule) or **by week** (game by game).
-  Games lock at kickoff, and correct picks score a point.
+- **Matchups** — call games two ways: **by team** (default — pick W/L down a
+  single team's whole schedule) or **by week** (game by game). Games lock at
+  kickoff, and correct picks score a point.
+- **One guided Bracket flow** — division winners → wild cards → seeding → the
+  playoff bracket, all on one page. Pick one winner per division and 3 wild cards
+  per conference (14 picks total; division winners are excluded from the wild-card
+  pool automatically), then advance teams through the Wild Card → Divisional →
+  Conference Championship → Super Bowl. Everything stays editable until you lock
+  it in or the deadline passes.
 - **Intertwined & smart** — a fully picked weekly slate sets that team's
-  projected record automatically, overriding the manual seeding. And if a wild
-  card you picked ends up with more wins than the division winner in its own
+  projected record automatically, overriding the manual seeding. Don't want to
+  call every game? Set win totals by hand on the Bracket page instead. And if a
+  wild card you picked ends up with more wins than the division winner in its own
   division, the app swaps them so your bracket stays consistent.
 - **Leaderboard** — everyone ranked by points, updated as results come in.
 - **Live NFL data** — schedule, scores, standings, and playoff results come from
@@ -79,8 +83,8 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 The repo is Railway-ready: `railway.json` builds with Nixpacks and, on every
 deploy, syncs the database schema (`prisma db push`) before starting the app.
 
-1. **New Project → Deploy from GitHub repo** → pick this repo and the
-   `claude/nfl-pick-app-xgmkfy` branch (or merge it to `main` first).
+1. **New Project → Deploy from GitHub repo** → pick this repo and the `main`
+   branch. Railway redeploys automatically on every push to it.
 2. **Add a database:** in the project, **New → Database → PostgreSQL**. Railway
    automatically exposes `DATABASE_URL` to your app service — no manual wiring.
    (If your app service doesn't pick it up, add a service variable
@@ -148,10 +152,10 @@ by wins) — a wild card never outseeds a division winner, even with a better
 record. Ties fall back to a deterministic order, so seeding is never random.
 Those seeds drive every bracket matchup (byes, reseeding, etc.).
 
-**Weekly picks feed the seeding.** If you've picked a winner for every game on a
-team's schedule (easy in the weekly view's *by team* mode), that team's record
+**Matchups feed the seeding.** If you've picked a winner for every game on a
+team's schedule (easy in the Matchups tab's *by team* mode), that team's record
 is derived from those picks and overrides the manual total — its Seeding row
-shows a **Weekly** badge and is read-only. This all runs server-side in
+shows a **Slate set** badge and is read-only. This all runs server-side in
 `src/lib/sync.ts` and is persisted, so scoring, the leaderboard, and the bracket
 all read the reconciled picks. Reconciliation only happens while your picks are
 still editable; once you lock in (or the deadline passes) predictions are frozen.
