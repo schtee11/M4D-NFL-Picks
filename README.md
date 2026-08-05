@@ -35,11 +35,17 @@ dark, blurple-accented layout with a bottom tab bar.
 
 ## Getting started (local)
 
+The app uses **Postgres**. For local dev you can run a local Postgres, or just
+borrow the Railway database once it's set up (see below):
+
 ```bash
 npm install
-cp .env.example .env        # defaults work out of the box (SQLite)
-npx prisma db push          # create the local dev.db
-npm run dev                 # http://localhost:3000
+cp .env.example .env         # set DATABASE_URL to your Postgres
+npx prisma db push           # create the tables
+npm run dev                  # http://localhost:3000
+
+# …or, once deployed on Railway, run locally against the Railway DB:
+railway run npm run dev
 ```
 
 Open the app, enter a name and a 4–6 digit PIN, and you're in. Have your friends
@@ -49,13 +55,13 @@ do the same on the same deployment.
 
 All via environment variables (see `.env.example`):
 
-| Variable         | Purpose                                                                 |
-| ---------------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`   | Prisma connection string. SQLite (`file:./dev.db`) or Postgres.         |
-| `NFL_SEASON`     | Season year to score against, e.g. `2026` for the 2026–27 season.       |
-| `SESSION_SECRET` | Long random string used to sign session cookies. **Set this in prod.**  |
-| `LEAGUE_NAME`    | Display name for your league (default: "The Pigskin Pickers").          |
-| `PICKS_DEADLINE` | Optional ISO datetime after which season picks can no longer change.    |
+| Variable         | Purpose                                                                     |
+| ---------------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`   | Postgres connection string. On Railway this is injected automatically.      |
+| `NFL_SEASON`     | Season year to score against, e.g. `2026` for the 2026–27 season.           |
+| `SESSION_SECRET` | Long random string used to sign session cookies. **Set this in prod.**      |
+| `LEAGUE_NAME`    | Display name for your league (default: "The Pigskin Pickers").              |
+| `PICKS_DEADLINE` | Optional ISO datetime after which season picks can no longer change.        |
 
 Generate a session secret:
 
@@ -63,25 +69,29 @@ Generate a session secret:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-## Deploying (shared for your buds)
+## Deploying on Railway
 
-Because picks are shared, host it somewhere with a **persistent Postgres**
-database (Railway, Render, Fly.io, Supabase, Neon, etc.).
+The repo is Railway-ready: `railway.json` builds with Nixpacks and, on every
+deploy, syncs the database schema (`prisma db push`) before starting the app.
 
-1. Switch the datasource in `prisma/schema.prisma`:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. Set `DATABASE_URL` (Postgres), `SESSION_SECRET`, `NFL_SEASON`, and optionally
-   `LEAGUE_NAME` / `PICKS_DEADLINE` in your host's env settings.
-3. Run migrations on deploy: `npx prisma db push` (or set up
-   `prisma migrate`), then `npm run build && npm start`.
+1. **New Project → Deploy from GitHub repo** → pick this repo and the
+   `claude/nfl-pick-app-xgmkfy` branch (or merge it to `main` first).
+2. **Add a database:** in the project, **New → Database → PostgreSQL**. Railway
+   automatically exposes `DATABASE_URL` to your app service — no manual wiring.
+   (If your app service doesn't pick it up, add a service variable
+   `DATABASE_URL = ${{Postgres.DATABASE_URL}}`.)
+3. **Set variables** on the app service:
+   - `SESSION_SECRET` — a long random string (command above)
+   - `NFL_SEASON` — e.g. `2026`
+   - optionally `LEAGUE_NAME`, `PICKS_DEADLINE`
+4. **Generate a domain:** service → **Settings → Networking → Generate Domain**.
+   Railway sets `PORT`; the app binds to it automatically.
+5. Deploy. Share the URL with your buds — everyone joins with a name + PIN.
 
-> Note: on serverless hosts (e.g. Vercel), SQLite files don't persist between
-> requests — use Postgres there.
+Redeploys happen automatically on every push to the connected branch. `prisma db
+push` runs on each boot, so schema changes roll out with your code.
+
+> Node is pinned to 20 via `.nvmrc` / `engines`.
 
 ## Scoring
 
