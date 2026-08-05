@@ -46,7 +46,14 @@ export async function POST(req: Request) {
         const winners = new Set(Object.values(divisionPicks));
         const clean = (arr: string[]) => (arr || []).filter((t) => !winners.has(t)).slice(0, 3);
         const wildcards = { AFC: clean(wc.AFC), NFC: clean(wc.NFC) };
-        const updated = await savePicks(user.id, divisionPicks, wildcards);
+        // Projected wins per team, clamped to a valid 0–17 integer.
+        const rawRecords = (body.records || {}) as Record<string, unknown>;
+        const records: Record<string, number> = {};
+        for (const [team, val] of Object.entries(rawRecords)) {
+          const n = Math.round(Number(val));
+          if (Number.isFinite(n)) records[team] = Math.min(17, Math.max(0, n));
+        }
+        const updated = await savePicks(user.id, divisionPicks, wildcards, records);
         return NextResponse.json({ ok: true, picks: parseEntry(updated) });
       }
       case "saveBracket": {

@@ -134,11 +134,17 @@ src/
 prisma/schema.prisma  data model
 ```
 
-## Known simplification & next steps
+## Seeding
 
-- **Seeding.** Division winners are seeded 1–4 in division order and wild cards
-  5–7 in the order picked (this mirrors the original prototype). Real NFL seeding
-  is by record. A natural next step is a "rank your seeds" step after picks lock.
+After all 14 teams are chosen, a **Seeding** section lets each player set every
+playoff team's projected win total. Seeds are then computed like the real NFL:
+division winners take seeds 1–4 (ordered by wins), wild cards take 5–7 (ordered
+by wins) — a wild card never outseeds a division winner, even with a better
+record. Ties fall back to a deterministic order, so seeding is never random.
+Those seeds drive every bracket matchup (byes, reseeding, etc.).
+
+## Next steps
+
 - **Admin tools.** Results refresh is open to any member today; a lightweight
   admin role could gate it and allow manual result overrides.
 - **Notifications.** Deadline / kickoff reminders could be added.

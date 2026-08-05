@@ -34,6 +34,9 @@ model SeasonEntry {
   divisionPicks String @default("{}")
   // JSON: { "AFC": ["...","...","..."], "NFC": [...] }
   wildcards     String @default("{\"AFC\":[],\"NFC\":[]}")
+  // JSON: { "KC": 14, ... } — projected regular-season wins per playoff team,
+  // used to seed the bracket (division winners 1-4 by wins, wildcards 5-7).
+  records       String @default("{}")
   // JSON: { "AFC_wc0": "BUF", ..., "SB": "KC" } — up to 13 entries.
   bracketPicks  String @default("{}")
   locked        Boolean  @default(false)

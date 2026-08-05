@@ -25,16 +25,25 @@ export interface Game {
   winner: string | null; // abbr of winner, once final
 }
 
+// A browser-like User-Agent — ESPN's edge returns 403 to some non-browser
+// agents, which would silently empty out the schedule.
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
 async function getJson(url: string): Promise<any | null> {
   try {
     const res = await fetch(url, {
       // Revalidate reasonably often; scores change during games.
       next: { revalidate: 60 },
-      headers: { "user-agent": "m4d-nfl-picks" },
+      headers: { "user-agent": UA, accept: "application/json" },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[espn] ${res.status} ${res.statusText} for ${url}`);
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (e) {
+    console.warn(`[espn] fetch failed for ${url}:`, (e as Error)?.message);
     return null;
   }
 }
@@ -44,8 +53,7 @@ function parseState(s: string): GameState {
   return "pre";
 }
 
-function parseGames(json: any, week: number, seasonType: number): Game[] {
-  const events: any[] = json?.events ?? [];
+function parseGames(events: any[], week: number, seasonType: number): Game[] {
   const games: Game[] = [];
   for (const ev of events) {
     const comp = ev?.competitions?.[0];
@@ -88,10 +96,20 @@ export async function getScoreboard(
   week: number,
   seasonType = 2,
 ): Promise<Game[]> {
-  const url = `${BASE}/scoreboard?dates=${season}&seasontype=${seasonType}&week=${week}`;
-  const json = await getJson(url);
-  if (!json) return [];
-  return parseGames(json, week, seasonType);
+  // Primary: the site API scoreboard for a specific season/week.
+  const primary = `${BASE}/scoreboard?dates=${season}&seasontype=${seasonType}&week=${week}`;
+  const json = await getJson(primary);
+  const events: any[] = json?.events ?? [];
+  if (events.length) return parseGames(events, week, seasonType);
+
+  // Fallback: the CDN "core" scoreboard, which uses a different shape and
+  // sometimes succeeds when the site API returns nothing.
+  const fallback = `https://cdn.espn.com/core/nfl/scoreboard?xhr=1&year=${season}&seasontype=${seasonType}&week=${week}`;
+  const alt = await getJson(fallback);
+  const altEvents: any[] = alt?.content?.sbData?.events ?? alt?.events ?? [];
+  if (altEvents.length) return parseGames(altEvents, week, seasonType);
+
+  return [];
 }
 
 // ── Actual results used for scoring season predictions ───────────────────────

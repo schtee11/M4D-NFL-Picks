@@ -2,15 +2,19 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { DIVISIONS, Conference, divisionsFor } from "@/lib/teams";
+import { DIVISIONS, Conference, divisionsFor, teamName } from "@/lib/teams";
 import {
   SeasonPicks,
   emptyPicks,
   canLock,
   picksMade,
+  getSeeds,
+  projectedWins,
+  REGULAR_SEASON_GAMES,
   TOTAL_SEASON_PICKS,
 } from "@/lib/bracket";
 import { TeamOption } from "@/components/TeamPickButton";
+import { TeamLogo } from "@/components/TeamLogo";
 
 export default function PicksScreen() {
   const router = useRouter();
@@ -42,10 +46,21 @@ export default function PicksScreen() {
         op: "savePicks",
         divisionPicks: next.divisionPicks,
         wildcards: next.wildcards,
+        records: next.records,
       }),
     }).catch(() => {});
     setSaving(false);
   }, []);
+
+  function setWins(teamId: string, wins: number) {
+    if (frozen) return;
+    const clamped = Math.min(REGULAR_SEASON_GAMES, Math.max(0, wins));
+    setPicks((s) => {
+      const next = { ...s, records: { ...s.records, [teamId]: clamped } };
+      persist(next);
+      return next;
+    });
+  }
 
   function pickDivisionWinner(divKey: string, teamId: string) {
     if (frozen) return;
@@ -203,6 +218,44 @@ export default function PicksScreen() {
         );
       })}
 
+      {/* Seeding by projected record — only once all 14 teams are chosen */}
+      {lockable && (
+        <>
+          <h4 style={{ margin: "24px 0 2px" }}>Seeding</h4>
+          <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
+            Set each team&apos;s projected record. Division winners seed 1–4 by
+            wins, wildcards 5–7 — this drives your bracket.
+          </p>
+          <div className="grid-2">
+            {(["AFC", "NFC"] as Conference[]).map((conf) => (
+              <div key={conf}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: ".06em",
+                    textTransform: "uppercase",
+                    opacity: 0.5,
+                    marginBottom: 8,
+                  }}
+                >
+                  {conf} seeds
+                </div>
+                {getSeeds(conf, picks).map((s) => (
+                  <SeedRow
+                    key={s.team}
+                    seed={s.seed}
+                    teamId={s.team}
+                    wins={projectedWins(picks, s.team)}
+                    disabled={frozen}
+                    onChange={(w) => setWins(s.team, w)}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Lock / edit CTAs */}
       <div className="cta-narrow">
       {deadlinePassed && !locked ? (
@@ -244,6 +297,73 @@ export default function PicksScreen() {
 
       <div style={{ height: 18, marginTop: 6, textAlign: "center" }}>
         {saving && <span style={{ fontSize: 11, opacity: 0.5 }}>Saving…</span>}
+      </div>
+    </div>
+  );
+}
+
+function SeedRow({
+  seed,
+  teamId,
+  wins,
+  disabled,
+  onChange,
+}: {
+  seed: number;
+  teamId: string;
+  wins: number;
+  disabled?: boolean;
+  onChange: (wins: number) => void;
+}) {
+  const losses = REGULAR_SEASON_GAMES - wins;
+  return (
+    <div
+      className="card elev-sm"
+      style={{
+        padding: "8px 10px",
+        marginBottom: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <span
+        style={{
+          width: 26,
+          fontSize: 12,
+          fontWeight: 600,
+          color: "var(--color-accent)",
+          flex: "none",
+        }}
+      >
+        #{seed}
+      </span>
+      <TeamLogo id={teamId} size={20} />
+      <span style={{ flex: 1, fontSize: 13 }}>{teamName(teamId)}</span>
+      <span style={{ fontSize: 12, opacity: 0.6, width: 42, textAlign: "right" }}>
+        {wins}–{losses}
+      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled || wins <= 0}
+          onClick={() => onChange(wins - 1)}
+          style={{ padding: "2px 9px", minWidth: 30 }}
+          aria-label={`Fewer wins for ${teamName(teamId)}`}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled || wins >= REGULAR_SEASON_GAMES}
+          onClick={() => onChange(wins + 1)}
+          style={{ padding: "2px 9px", minWidth: 30 }}
+          aria-label={`More wins for ${teamName(teamId)}`}
+        >
+          +
+        </button>
       </div>
     </div>
   );

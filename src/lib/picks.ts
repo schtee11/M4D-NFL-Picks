@@ -15,6 +15,7 @@ export function parseEntry(entry: SeasonEntry | null): SeasonPicks {
       divisionPicks: JSON.parse(entry.divisionPicks),
       wildcards: { AFC: wc.AFC ?? [], NFC: wc.NFC ?? [] },
       bracketPicks: JSON.parse(entry.bracketPicks),
+      records: JSON.parse(entry.records ?? "{}"),
     };
   } catch {
     return emptyPicks();
@@ -35,6 +36,7 @@ export async function savePicks(
   userId: string,
   divisionPicks: Record<string, string>,
   wildcards: Record<Conference, string[]>,
+  records: Record<string, number>,
   season = SEASON,
 ): Promise<SeasonEntry> {
   await getOrCreateEntry(userId, season);
@@ -43,6 +45,7 @@ export async function savePicks(
     data: {
       divisionPicks: JSON.stringify(divisionPicks),
       wildcards: JSON.stringify(wildcards),
+      records: JSON.stringify(records),
     },
   });
 }

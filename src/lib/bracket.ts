@@ -14,6 +14,14 @@ export interface SeasonPicks {
   divisionPicks: Record<string, string>; // { "AFC East": "BUF", ... }
   wildcards: Record<Conference, string[]>; // { AFC: [...3], NFC: [...3] }
   bracketPicks: Record<string, string>; // { "AFC_wc0": "BUF", ..., "SB": "KC" }
+  records: Record<string, number>; // projected regular-season wins per team
+}
+
+export const REGULAR_SEASON_GAMES = 17;
+
+export function projectedWins(picks: SeasonPicks, teamId: string): number {
+  const w = picks.records?.[teamId];
+  return typeof w === "number" && w >= 0 ? w : 0;
 }
 
 export interface Seed {
@@ -31,7 +39,7 @@ export interface Matchup {
 }
 
 export function emptyPicks(): SeasonPicks {
-  return { divisionPicks: {}, wildcards: { AFC: [], NFC: [] }, bracketPicks: {} };
+  return { divisionPicks: {}, wildcards: { AFC: [], NFC: [] }, bracketPicks: {}, records: {} };
 }
 
 export function divisionsComplete(picks: SeasonPicks): number {
@@ -54,10 +62,24 @@ export function canLock(picks: SeasonPicks): boolean {
   );
 }
 
+// Seeds a conference: division winners take seeds 1-4 ordered by projected
+// wins, then wildcards take 5-7 ordered by projected wins. Ties keep the
+// team's original (pick) order, so seeding is deterministic — never random.
 export function getSeeds(conf: Conference, picks: SeasonPicks): Seed[] {
-  const divs = divisionsFor(conf);
-  const seeds: Seed[] = divs.map((d, i) => ({ seed: i + 1, team: picks.divisionPicks[d.key] }));
-  (picks.wildcards[conf] ?? []).forEach((t, i) => seeds.push({ seed: 5 + i, team: t }));
+  const divWinners = divisionsFor(conf)
+    .map((d) => picks.divisionPicks[d.key])
+    .filter(Boolean) as string[];
+  const wildcards = (picks.wildcards[conf] ?? []).filter(Boolean) as string[];
+
+  const byWins = (list: string[]) =>
+    list
+      .map((team, i) => ({ team, i }))
+      .sort((a, b) => projectedWins(picks, b.team) - projectedWins(picks, a.team) || a.i - b.i)
+      .map((x) => x.team);
+
+  const seeds: Seed[] = [];
+  byWins(divWinners).forEach((team, i) => seeds.push({ seed: i + 1, team }));
+  byWins(wildcards).forEach((team, i) => seeds.push({ seed: 5 + i, team }));
   return seeds;
 }
 
