@@ -215,8 +215,31 @@ button { font-family: var(--font-body); }
   text-align: left;
   color: var(--color-text);
   font-size: 13px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease,
+    opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-.pick-btn:disabled { cursor: default; }
+.pick-btn:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-divider));
+}
+.pick-btn:not(:disabled):active {
+  transform: scale(0.975);
+}
+.pick-btn:disabled {
+  cursor: default;
+}
+
+/* Selection overlay — always present, faded in/out so selection animates
+   smoothly whether you're switching a division winner or reseeding a bracket. */
+.pick-fill,
+.pick-ring {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.is-selected .pick-fill,
+.is-selected .pick-ring {
+  opacity: 1;
+}
 .pick-fill {
   position: absolute;
   inset: 0;
@@ -229,6 +252,28 @@ button { font-family: var(--font-body); }
   border: 1.5px solid var(--color-accent);
   border-radius: var(--radius-md);
   pointer-events: none;
+}
+/* The check that appears on a selected option pops in. */
+.pick-check {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.is-selected .pick-check {
+  opacity: 1;
+  transform: scale(1);
+}
+/* A generic selectable button (bracket / super bowl / weekly sides). */
+.sel-btn {
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease,
+    opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.sel-btn:not(:disabled):active {
+  transform: scale(0.975);
+}
+.sel-btn:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-divider));
 }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .spin {

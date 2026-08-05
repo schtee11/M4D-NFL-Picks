@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { teamName, teamColor } from "@/lib/teams";
+import { teamName } from "@/lib/teams";
+import { TeamLogo } from "@/components/TeamLogo";
 import { CheckIcon, LockIcon } from "@/components/icons";
 
 interface GameVM {
@@ -149,6 +150,7 @@ function SideBtn({
       type="button"
       disabled={game.locked}
       onClick={() => onPick(game.id, team)}
+      className={"sel-btn" + (selected && !game.locked ? " is-selected" : "")}
       style={{
         position: "relative",
         overflow: "hidden",
@@ -166,13 +168,9 @@ function SideBtn({
         opacity: game.state === "post" && !isWinner ? 0.55 : 1,
       }}
     >
-      {selected && !game.locked && (
-        <>
-          <span className="pick-fill" style={{ borderRadius: "var(--radius-sm)" }} />
-          <span className="pick-ring" style={{ borderRadius: "var(--radius-sm)" }} />
-        </>
-      )}
-      <span className="dot" style={{ position: "relative", width: 9, height: 9, background: teamColor(team) }} />
+      <span className="pick-fill" style={{ borderRadius: "var(--radius-sm)" }} />
+      <span className="pick-ring" style={{ borderRadius: "var(--radius-sm)" }} />
+      <TeamLogo id={team} size={22} />
       <span style={{ position: "relative", flex: 1, fontSize: 12.5 }}>
         {home ? "" : "@ "}
         {teamName(team)}

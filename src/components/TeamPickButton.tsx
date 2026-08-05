@@ -1,6 +1,7 @@
 "use client";
 
-import { teamColor, teamName } from "@/lib/teams";
+import { teamName } from "@/lib/teams";
+import { TeamLogo } from "@/components/TeamLogo";
 import { CheckIcon } from "@/components/icons";
 
 // Grid option used on the Divisions & Wildcards screen.
@@ -8,33 +9,35 @@ export function TeamOption({
   id,
   selected,
   disabled,
+  dimmed,
   onClick,
 }: {
   id: string;
   selected: boolean;
   disabled?: boolean;
+  dimmed?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="pick-btn">
-      {selected && (
-        <>
-          <span className="pick-fill" />
-          <span className="pick-ring" />
-        </>
-      )}
-      <span className="dot" style={{ position: "relative", background: teamColor(id) }} />
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={"pick-btn" + (selected ? " is-selected" : "")}
+      style={dimmed ? { opacity: 0.4 } : undefined}
+    >
+      <span className="pick-fill" />
+      <span className="pick-ring" />
+      <TeamLogo id={id} size={22} />
       <span style={{ position: "relative", flex: 1 }}>{teamName(id)}</span>
-      {selected && (
-        <span style={{ position: "relative", color: "var(--color-accent)", flex: "none" }}>
-          <CheckIcon />
-        </span>
-      )}
+      <span className="pick-check" style={{ position: "relative", color: "var(--color-accent)", flex: "none" }}>
+        <CheckIcon />
+      </span>
     </button>
   );
 }
 
-// One side of a bracket matchup (seed · dot · name).
+// One side of a bracket matchup (seed · logo · name).
 export function MatchupSide({
   id,
   seed,
@@ -55,6 +58,7 @@ export function MatchupSide({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      className={"sel-btn" + (selected ? " is-selected" : "")}
       style={{
         position: "relative",
         overflow: "hidden",
@@ -71,19 +75,12 @@ export function MatchupSide({
         color: "var(--color-text)",
       }}
     >
-      {selected && (
-        <>
-          <span className="pick-fill" style={{ borderRadius: radius }} />
-          <span className="pick-ring" style={{ borderRadius: radius }} />
-        </>
-      )}
+      <span className="pick-fill" style={{ borderRadius: radius }} />
+      <span className="pick-ring" style={{ borderRadius: radius }} />
       {seed != null && (
         <span style={{ position: "relative", fontSize: 10, opacity: 0.5 }}>#{seed}</span>
       )}
-      <span
-        className="dot"
-        style={{ position: "relative", width: 8, height: 8, background: teamColor(id) }}
-      />
+      <TeamLogo id={id} size={18} />
       <span style={{ position: "relative", fontSize: 12.5, flex: 1 }}>{teamName(id)}</span>
     </button>
   );

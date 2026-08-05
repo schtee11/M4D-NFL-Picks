@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Conference, teamName, teamColor } from "@/lib/teams";
+import { Conference, teamName } from "@/lib/teams";
 import {
   SeasonPicks,
   emptyPicks,
@@ -16,6 +16,7 @@ import {
   champion,
 } from "@/lib/bracket";
 import { MatchupSide } from "@/components/TeamPickButton";
+import { TeamLogo } from "@/components/TeamLogo";
 import { TrophyIcon } from "@/components/icons";
 
 const kicker: React.CSSProperties = {
@@ -173,7 +174,7 @@ function ConferenceColumn({
     <div>
       <div style={{ ...kicker, margin: topGap ? "20px 0 8px" : "0 0 8px" }}>{conf} · Wild Card</div>
       <div className="card elev-sm" style={{ padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <span className="dot" style={{ width: 9, height: 9, background: teamColor(bye.team) }} />
+        <TeamLogo id={bye.team} size={22} />
         <span style={{ flex: 1, fontSize: 13 }}>No. 1 {teamName(bye.team)}</span>
         <span className="tag tag-neutral" style={{ fontSize: 10 }}>Bye</span>
       </div>
@@ -228,6 +229,7 @@ function SBSide({
       <button
         type="button"
         onClick={onClick}
+        className={"sel-btn" + (selected ? " is-selected" : "")}
         style={{
           position: "relative",
           overflow: "hidden",
@@ -235,8 +237,8 @@ function SBSide({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 6,
-          padding: "12px 8px",
+          gap: 8,
+          padding: "14px 8px",
           borderRadius: "var(--radius-md)",
           border: "1px solid var(--color-divider)",
           background: "var(--color-bg)",
@@ -244,13 +246,9 @@ function SBSide({
           color: "var(--color-text)",
         }}
       >
-        {selected && (
-          <>
-            <span className="pick-fill" />
-            <span className="pick-ring" />
-          </>
-        )}
-        <span className="dot" style={{ position: "relative", width: 14, height: 14, background: teamColor(id) }} />
+        <span className="pick-fill" />
+        <span className="pick-ring" />
+        <TeamLogo id={id} size={40} />
         <span style={{ position: "relative", fontSize: 13 }}>{teamName(id)}</span>
       </button>
     </div>

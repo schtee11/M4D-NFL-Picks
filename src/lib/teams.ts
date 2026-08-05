@@ -81,6 +81,13 @@ export function conferenceOf(id: string): Conference | null {
   return d ? d.conf : null;
 }
 
+// ESPN logo slugs match our abbreviations lowercased, except Washington.
+const LOGO_SLUG: Record<string, string> = { WAS: "wsh" };
+export function teamLogo(id: string): string {
+  const slug = LOGO_SLUG[id] ?? id.toLowerCase();
+  return `https://a.espncdn.com/i/teamlogos/nfl/500/${slug}.png`;
+}
+
 // ESPN sometimes uses slightly different abbreviations; normalize to ours.
 const ESPN_ALIASES: Record<string, string> = {
   WSH: "WAS",

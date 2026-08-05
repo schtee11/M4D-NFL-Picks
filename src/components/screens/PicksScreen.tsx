@@ -173,18 +173,31 @@ export default function PicksScreen() {
               >
                 {conf} wildcards
               </span>
-              <span style={{ fontSize: 12, opacity: 0.6 }}>{wv.count} / 3</span>
+              <span
+                style={{
+                  fontSize: 12,
+                  opacity: wv.count >= 3 ? 1 : 0.6,
+                  color: wv.count >= 3 ? "var(--color-accent)" : undefined,
+                }}
+              >
+                {wv.count} / 3
+              </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {wv.remaining.map((id) => (
-                <TeamOption
-                  key={id}
-                  id={id}
-                  selected={picks.wildcards[conf].includes(id)}
-                  disabled={frozen}
-                  onClick={() => toggleWildcard(conf, id)}
-                />
-              ))}
+              {wv.remaining.map((id) => {
+                const sel = picks.wildcards[conf].includes(id);
+                const full = wv.count >= 3;
+                return (
+                  <TeamOption
+                    key={id}
+                    id={id}
+                    selected={sel}
+                    disabled={frozen || (!sel && full)}
+                    dimmed={!sel && full}
+                    onClick={() => toggleWildcard(conf, id)}
+                  />
+                );
+              })}
             </div>
           </div>
         );
