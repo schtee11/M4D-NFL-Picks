@@ -40,6 +40,57 @@ function buildText(picks: SeasonPicks, name: string, league: string, season: num
   return lines.join("\n");
 }
 
+function blobToDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+// Fetch a logo and return it as a data URL. Tries the ESPN CDN directly (works
+// if it allows cross-origin fetch), then our same-origin /api/logo route.
+async function logoDataURL(img: HTMLImageElement): Promise<string | null> {
+  const team = img.dataset.team;
+  const urls = [img.currentSrc || img.src];
+  if (team) urls.push(`/api/logo?id=${encodeURIComponent(team)}`);
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { cache: "force-cache" });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) continue;
+      return await blobToDataURL(blob);
+    } catch {
+      /* try the next source */
+    }
+  }
+  return null;
+}
+
+// Replace every logo in `node` with an inlined data URL for a clean, untainted
+// capture. Returns a function that restores the original sources.
+async function inlineLogos(node: HTMLElement): Promise<() => void> {
+  const imgs = Array.from(node.querySelectorAll("img")) as HTMLImageElement[];
+  const undo: Array<() => void> = [];
+  await Promise.all(
+    imgs.map(async (img) => {
+      const data = await logoDataURL(img);
+      if (!data) return;
+      const prev = img.getAttribute("src");
+      undo.push(() => (prev == null ? img.removeAttribute("src") : img.setAttribute("src", prev)));
+      img.setAttribute("src", data);
+      try {
+        await img.decode();
+      } catch {
+        /* ignore decode hiccups */
+      }
+    }),
+  );
+  return () => undo.forEach((f) => f());
+}
+
 export default function ShareSheet({
   picks,
   name,
@@ -69,11 +120,15 @@ export default function ShareSheet({
     if (!node) return;
     setBusy(true);
     setImgMsg(null);
+    // Swap each logo for an inlined data URL so the canvas isn't tainted by a
+    // cross-origin CDN image. We can't proxy through the server (ESPN blocks
+    // datacenter IPs), so fetch in the browser: the CDN directly first, then our
+    // same-origin route as a fallback.
+    const restore = await inlineLogos(node);
     try {
       const { toBlob } = await import("html-to-image");
       const blob = await toBlob(node, {
         pixelRatio: 2,
-        cacheBust: true,
         skipFonts: true,
         backgroundColor: "#161826",
         filter: (el) => !(el instanceof HTMLElement && el.dataset.noexport === "true"),
@@ -102,6 +157,7 @@ export default function ShareSheet({
     } catch {
       flash("Failed");
     } finally {
+      restore();
       setBusy(false);
     }
   }
@@ -197,7 +253,7 @@ export default function ShareSheet({
               </div>
               <div style={{ ...kicker, marginBottom: 8 }}>Predicted champion</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                <TeamLogo id={champ} size={30} proxied />
+                <TeamLogo id={champ} size={30} />
                 <span style={{ fontSize: 19, fontWeight: 600 }}>{teamName(champ)}</span>
               </div>
             </div>
@@ -222,7 +278,7 @@ export default function ShareSheet({
               const t = picks.divisionPicks[d.key];
               return (
                 <div key={d.key} className="card elev-sm" style={{ padding: "8px 10px", flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {t ? <TeamLogo id={t} size={18} proxied /> : <span style={{ width: 18 }} />}
+                  {t ? <TeamLogo id={t} size={18} /> : <span style={{ width: 18 }} />}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 9.5, opacity: 0.5 }}>{d.key}</div>
                     <div style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -248,7 +304,7 @@ export default function ShareSheet({
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", borderBottom: "1px solid var(--color-divider)" }}
                   >
                     <span style={{ width: 20, fontSize: 11, fontWeight: 600, color: "var(--color-accent)" }}>#{s.seed}</span>
-                    <TeamLogo id={s.team} size={18} proxied />
+                    <TeamLogo id={s.team} size={18} />
                     <span style={{ flex: 1, fontSize: 12.5 }}>{teamName(s.team)}</span>
                     <span style={{ fontSize: 11, opacity: 0.5 }}>
                       {winners.has(s.team) ? "Div" : "WC"} · {projectedWins(picks, s.team)}–{17 - projectedWins(picks, s.team)}
@@ -299,12 +355,12 @@ export default function ShareSheet({
 function SbTeam({ id, tag, alignRight }: { id: string; tag: string; alignRight?: boolean }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, justifyContent: alignRight ? "flex-end" : "flex-start" }}>
-      {!alignRight && <TeamLogo id={id} size={24} proxied />}
+      {!alignRight && <TeamLogo id={id} size={24} />}
       <div style={{ textAlign: alignRight ? "right" : "left" }}>
         <div style={{ fontSize: 9.5, opacity: 0.5 }}>{tag}</div>
         <div style={{ fontSize: 13 }}>{teamName(id)}</div>
       </div>
-      {alignRight && <TeamLogo id={id} size={24} proxied />}
+      {alignRight && <TeamLogo id={id} size={24} />}
     </div>
   );
 }
