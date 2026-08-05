@@ -4,7 +4,14 @@
 
 import { prisma } from "./db";
 import { SEASON } from "./config";
-import { getStandings, getPlayoffResults, getScoreboard, ActualStandings, PlayoffResults } from "./espn";
+import {
+  getStandings,
+  getPlayoffResults,
+  getScoreboard,
+  isRegularSeasonComplete,
+  ActualStandings,
+  PlayoffResults,
+} from "./espn";
 import { Actuals } from "./scoring";
 
 const STALE_MS = 15 * 60 * 1000; // 15 minutes
@@ -28,6 +35,18 @@ async function writeCache(season: number, kind: string, data: any) {
   });
 }
 
+// Whether the regular season has finished. Division-winner and wildcard
+// predictions are FINAL-standings bets, so they must not score before this is
+// true (preseason standings are all 0–0 and would hand out phantom points).
+// Latches to true once observed, so a transient ESPN hiccup can't un-finish it.
+async function regularSeasonComplete(season: number): Promise<boolean> {
+  const cached = await readCache(season, "seasonComplete");
+  if (cached?.data === true) return true;
+  const complete = await isRegularSeasonComplete(season);
+  if (complete) await writeCache(season, "seasonComplete", true);
+  return complete;
+}
+
 export async function getActuals(season = SEASON, forceRefresh = false): Promise<Actuals> {
   let standings: ActualStandings | null = null;
   let playoffs: PlayoffResults | null = null;
@@ -37,16 +56,20 @@ export async function getActuals(season = SEASON, forceRefresh = false): Promise
   const fresh = (c: { fetchedAt: Date } | null) =>
     c && Date.now() - c.fetchedAt.getTime() < STALE_MS;
 
-  if (!forceRefresh && fresh(sCache)) standings = sCache!.data;
   if (!forceRefresh && fresh(pCache)) playoffs = pCache!.data;
 
-  if (standings === null) {
-    const fetched = await getStandings(season);
-    if (fetched) {
-      standings = fetched;
-      await writeCache(season, "standings", fetched);
-    } else if (sCache) {
-      standings = sCache.data; // fall back to stale cache
+  // Standings only count once the regular season is over. Until then, division
+  // winners and wildcards are undecided, so they score 0 (standings stays null).
+  if (await regularSeasonComplete(season)) {
+    if (!forceRefresh && fresh(sCache)) standings = sCache!.data;
+    if (standings === null) {
+      const fetched = await getStandings(season);
+      if (fetched) {
+        standings = fetched;
+        await writeCache(season, "standings", fetched);
+      } else if (sCache) {
+        standings = sCache.data; // fall back to stale cache
+      }
     }
   }
   if (playoffs === null) {

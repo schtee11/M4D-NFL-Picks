@@ -125,6 +125,14 @@ export async function getSeasonSchedule(season: number): Promise<Game[]> {
   return perWeek.flat();
 }
 
+// True once every Week 18 regular-season game is final — i.e. division winners
+// and the 1–7 conference seeds are settled. Used to gate standings-based
+// scoring so nothing is awarded on provisional (or preseason) standings.
+export async function isRegularSeasonComplete(season: number): Promise<boolean> {
+  const games = await getScoreboard(season, 18, 2);
+  return games.length > 0 && games.every((g) => g.state === "post");
+}
+
 // ── Actual results used for scoring season predictions ───────────────────────
 
 export interface ActualStandings {
