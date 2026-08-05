@@ -92,7 +92,11 @@ export default function WeeklyScreen() {
           </div>
         </div>
       ) : (
-        games.map((g) => <GameCard key={g.id} g={g} onPick={pick} />)
+        <div className="games-grid">
+          {games.map((g) => (
+            <GameCard key={g.id} g={g} onPick={pick} />
+          ))}
+        </div>
       )}
 
       <div style={{ height: 18, marginTop: 6, textAlign: "center" }}>

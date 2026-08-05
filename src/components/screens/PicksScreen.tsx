@@ -132,7 +132,7 @@ export default function PicksScreen() {
           >
             {d.key}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="team-grid">
             {d.teams.map((id) => (
               <TeamOption
                 key={id}
@@ -183,7 +183,7 @@ export default function PicksScreen() {
                 {wv.count} / 3
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div className="team-grid">
               {wv.remaining.map((id) => {
                 const sel = picks.wildcards[conf].includes(id);
                 const full = wv.count >= 3;
@@ -204,6 +204,7 @@ export default function PicksScreen() {
       })}
 
       {/* Lock / edit CTAs */}
+      <div className="cta-narrow">
       {deadlinePassed && !locked ? (
         <div className="card elev-sm" style={{ padding: "12px 14px", marginTop: 8 }}>
           <span style={{ fontSize: 13, opacity: 0.7 }}>
@@ -239,6 +240,7 @@ export default function PicksScreen() {
           Lock in picks · {made}/{TOTAL_SEASON_PICKS}
         </button>
       )}
+      </div>
 
       <div style={{ height: 18, marginTop: 6, textAlign: "center" }}>
         {saving && <span style={{ fontSize: 11, opacity: 0.5 }}>Saving…</span>}

@@ -66,60 +66,62 @@ export default async function Dashboard() {
         </div>
       </div>
 
-      {/* Division & wildcards progress */}
-      <Link href="/picks" style={{ textDecoration: "none", color: "inherit" }}>
-        <div className="card elev-sm" style={{ padding: 16, marginBottom: 12 }}>
-          <div className="card-kicker">Division winners &amp; wildcards</div>
-          <div className="card-title" style={{ fontSize: 18 }}>
-            {made} / {TOTAL_SEASON_PICKS} picked
+      <div className="grid-2">
+        {/* Division & wildcards progress */}
+        <Link href="/picks" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
+            <div className="card-kicker">Division winners &amp; wildcards</div>
+            <div className="card-title" style={{ fontSize: 18 }}>
+              {made} / {TOTAL_SEASON_PICKS} picked
+            </div>
+            <Progress pct={picksPct} />
           </div>
-          <Progress pct={picksPct} />
-        </div>
-      </Link>
+        </Link>
 
-      {/* Bracket progress */}
-      <Link href="/bracket" style={{ textDecoration: "none", color: "inherit" }}>
-        <div className="card elev-sm" style={{ padding: 16, marginBottom: 12 }}>
-          <div className="card-kicker">Playoff bracket</div>
-          <div className="card-title" style={{ fontSize: 18 }}>
-            {bracketStatus}
+        {/* Bracket progress */}
+        <Link href="/bracket" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
+            <div className="card-kicker">Playoff bracket</div>
+            <div className="card-title" style={{ fontSize: 18 }}>
+              {bracketStatus}
+            </div>
+            <Progress pct={bracketPct} />
           </div>
-          <Progress pct={bracketPct} />
-        </div>
-      </Link>
+        </Link>
 
-      {/* Weekly picks link */}
-      <Link href="/weekly" style={{ textDecoration: "none", color: "inherit" }}>
-        <div className="card elev-sm" style={{ padding: 16, marginBottom: 12 }}>
-          <div className="card-kicker">Weekly picks</div>
-          <div className="card-title" style={{ fontSize: 18 }}>
-            Pick this week&apos;s winners
+        {/* Weekly picks link */}
+        <Link href="/weekly" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16, height: "100%" }}>
+            <div className="card-kicker">Weekly picks</div>
+            <div className="card-title" style={{ fontSize: 18 }}>
+              Pick this week&apos;s winners
+            </div>
           </div>
-        </div>
-      </Link>
+        </Link>
 
-      {/* Leaderboard preview */}
-      <Link href="/league" style={{ textDecoration: "none", color: "inherit" }}>
-        <div className="card elev-sm" style={{ padding: 16 }}>
-          <div className="card-kicker">{LEAGUE_NAME}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-            {topThree.length === 0 && (
-              <div style={{ fontSize: 13, opacity: 0.5 }}>No standings yet.</div>
-            )}
-            {topThree.map((m) => (
-              <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                <span style={{ width: 16, opacity: 0.5 }}>{m.rank}</span>
-                <span style={{ flex: 1 }}>{m.name}</span>
-                <span style={{ opacity: 0.7 }}>{m.points} pts</span>
-              </div>
-            ))}
+        {/* Leaderboard preview */}
+        <Link href="/league" className="col-span-all" style={{ textDecoration: "none", color: "inherit" }}>
+          <div className="card elev-sm" style={{ padding: 16 }}>
+            <div className="card-kicker">{LEAGUE_NAME}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              {topThree.length === 0 && (
+                <div style={{ fontSize: 13, opacity: 0.5 }}>No standings yet.</div>
+              )}
+              {topThree.map((m) => (
+                <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <span style={{ width: 16, opacity: 0.5 }}>{m.rank}</span>
+                  <span style={{ flex: 1 }}>{m.name}</span>
+                  <span style={{ opacity: 0.7 }}>{m.points} pts</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10, color: "var(--color-accent)", fontSize: 12 }}>
+              View standings
+              <ChevronRight size={12} />
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10, color: "var(--color-accent)", fontSize: 12 }}>
-            View standings
-            <ChevronRight size={12} />
-          </div>
-        </div>
-      </Link>
+        </Link>
+      </div>
     </div>
   );
 }

@@ -119,37 +119,41 @@ function FullBracket({
   const champ = champion(picks);
   return (
     <div>
-      {(["AFC", "NFC"] as Conference[]).map((conf, ci) => (
-        <ConferenceColumn key={conf} conf={conf} picks={picks} onPick={onPick} topGap={ci === 1} />
-      ))}
+      <div className="bracket-cols">
+        {(["AFC", "NFC"] as Conference[]).map((conf) => (
+          <ConferenceColumn key={conf} conf={conf} picks={picks} onPick={onPick} />
+        ))}
+      </div>
 
-      {sb && (
-        <>
-          <div style={{ ...kicker, margin: "20px 0 8px", textAlign: "center" }}>Super Bowl</div>
-          <div className="card elev-md" style={{ padding: 16, marginBottom: 8 }}>
-            <div style={{ display: "flex", gap: 10 }}>
-              <SBSide label="AFC Champion" id={sb.teamA} selected={sb.winner === sb.teamA} onClick={() => onPick("SB", sb.teamA)} />
-              <div style={{ alignSelf: "center", fontSize: 11, opacity: 0.4 }}>VS</div>
-              <SBSide label="NFC Champion" id={sb.teamB} selected={sb.winner === sb.teamB} onClick={() => onPick("SB", sb.teamB)} />
+      <div className="sb-wrap">
+        {sb && (
+          <>
+            <div style={{ ...kicker, margin: "20px 0 8px", textAlign: "center" }}>Super Bowl</div>
+            <div className="card elev-md" style={{ padding: 16, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <SBSide label="AFC Champion" id={sb.teamA} selected={sb.winner === sb.teamA} onClick={() => onPick("SB", sb.teamA)} />
+                <div style={{ alignSelf: "center", fontSize: 11, opacity: 0.4 }}>VS</div>
+                <SBSide label="NFC Champion" id={sb.teamB} selected={sb.winner === sb.teamB} onClick={() => onPick("SB", sb.teamB)} />
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {champ && (
-        <div
-          className="card elev-md"
-          style={{ padding: 20, marginTop: 12, textAlign: "center", borderColor: "var(--color-accent)" }}
-        >
-          <div style={{ color: "var(--color-accent)", marginBottom: 8, display: "flex", justifyContent: "center" }}>
-            <TrophyIcon size={26} style={{ strokeWidth: 1.7 }} />
+        {champ && (
+          <div
+            className="card elev-md"
+            style={{ padding: 20, marginTop: 12, textAlign: "center", borderColor: "var(--color-accent)" }}
+          >
+            <div style={{ color: "var(--color-accent)", marginBottom: 8, display: "flex", justifyContent: "center" }}>
+              <TrophyIcon size={26} style={{ strokeWidth: 1.7 }} />
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>
+              Super Bowl Champion
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 500 }}>{teamName(champ)}</div>
           </div>
-          <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}>
-            Super Bowl Champion
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 500 }}>{teamName(champ)}</div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -158,12 +162,10 @@ function ConferenceColumn({
   conf,
   picks,
   onPick,
-  topGap,
 }: {
   conf: Conference;
   picks: SeasonPicks;
   onPick: (key: string, team: string) => void;
-  topGap?: boolean;
 }) {
   const bye = getByeSeed(conf, picks)!;
   const wc = getWcMatchups(conf, picks);
@@ -172,7 +174,7 @@ function ConferenceColumn({
 
   return (
     <div>
-      <div style={{ ...kicker, margin: topGap ? "20px 0 8px" : "0 0 8px" }}>{conf} · Wild Card</div>
+      <div style={{ ...kicker, margin: "0 0 8px" }}>{conf} · Wild Card</div>
       <div className="card elev-sm" style={{ padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
         <TeamLogo id={bye.team} size={22} />
         <span style={{ flex: 1, fontSize: 13 }}>No. 1 {teamName(bye.team)}</span>

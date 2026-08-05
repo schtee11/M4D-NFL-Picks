@@ -39,8 +39,9 @@ export default function LoginPage() {
     <div className="app-shell">
       <div
         className="app-frame"
-        style={{ justifyContent: "center", padding: "24px 20px" }}
+        style={{ justifyContent: "center", alignItems: "center", padding: "24px 20px" }}
       >
+        <div style={{ width: "100%", maxWidth: 400 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <span
             style={{
@@ -114,6 +115,7 @@ export default function LoginPage() {
         <p style={{ opacity: 0.4, fontSize: 11, textAlign: "center", marginTop: 16 }}>
           Keep your PIN handy — it&apos;s how you get back into your picks.
         </p>
+        </div>
       </div>
     </div>
   );

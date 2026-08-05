@@ -11,7 +11,7 @@ export default async function LeaguePage() {
   const memberCount = rows.length;
 
   return (
-    <div>
+    <div className="narrow">
       <h4 style={{ margin: "0 0 2px" }}>{LEAGUE_NAME}</h4>
       <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
         {SEASON} season standings · {memberCount} member{memberCount === 1 ? "" : "s"}

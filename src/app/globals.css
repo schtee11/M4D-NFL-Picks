@@ -285,3 +285,133 @@ button { font-family: var(--font-body); }
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Responsive layout. Mobile (< 720px) keeps the original 460px phone frame
+   with the bottom tab bar. At ≥ 720px the frame widens, navigation moves to
+   the top bar, and content lays out in columns.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--color-bg);
+  padding: 14px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+}
+
+/* Navigation: bottom bar on mobile, top links on desktop. */
+.bottom-nav {
+  display: flex;
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  flex: none;
+}
+.desktop-nav {
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
+.desktop-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  text-decoration: none;
+  color: var(--color-neutral-500);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.desktop-nav a:hover {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+.desktop-nav a[data-active="true"] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* Responsive content grids (auto-reflow, no per-screen media queries). */
+.grid-2 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+.team-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+.games-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+.bracket-cols {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .app-frame {
+    max-width: 1000px;
+  }
+  .app-header {
+    padding: 16px 24px;
+  }
+  .app-content {
+    padding: 24px 24px 40px;
+  }
+  .bottom-nav {
+    display: none;
+  }
+  .desktop-nav {
+    display: flex;
+  }
+  .grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .team-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .games-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .bracket-cols {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  /* Let a leaderboard / full-width card span the whole grid row. */
+  .col-span-all {
+    grid-column: 1 / -1;
+  }
+  /* Keep the Super Bowl card from stretching across the full desktop width. */
+  .sb-wrap {
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* Cap the reading width of standings and call-to-action controls. */
+  .narrow {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .cta-narrow {
+    max-width: 380px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

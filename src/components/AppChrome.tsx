@@ -43,19 +43,7 @@ export default function AppChrome({
     <div className="app-shell">
       <div className="app-frame">
         {/* Header */}
-        <div
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 5,
-            background: "var(--color-bg)",
-            padding: "14px 16px 12px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderBottom: "1px solid var(--color-divider)",
-          }}
-        >
+        <header className="app-header">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span
               style={{
@@ -76,6 +64,17 @@ export default function AppChrome({
             </span>
             <span style={{ fontSize: 15, fontWeight: 500 }}>Gridiron Picks</span>
           </div>
+
+          {/* Desktop top nav (hidden on mobile) */}
+          <nav className="desktop-nav">
+            {TABS.map(({ href, label, Icon, match }) => (
+              <Link key={href} href={href} data-active={match(pathname)}>
+                <Icon size={17} />
+                {label}
+              </Link>
+            ))}
+          </nav>
+
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {deadlinePassed ? (
               <span className="tag tag-neutral">Deadline passed</span>
@@ -94,20 +93,13 @@ export default function AppChrome({
               Sign out
             </button>
           </div>
-        </div>
+        </header>
 
         {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 24px" }}>{children}</div>
+        <div className="app-content">{children}</div>
 
-        {/* Bottom nav */}
-        <nav
-          style={{
-            display: "flex",
-            borderTop: "1px solid var(--color-divider)",
-            background: "var(--color-surface)",
-            flex: "none",
-          }}
-        >
+        {/* Bottom nav (mobile only) */}
+        <nav className="bottom-nav">
           {TABS.map(({ href, label, Icon, match }) => {
             const active = match(pathname);
             return (
