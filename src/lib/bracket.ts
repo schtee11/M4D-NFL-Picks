@@ -1,12 +1,18 @@
-// Playoff bracket construction, ported directly from the design prototype so
-// behavior matches. Pure functions over a picks object — shared by the
-// interactive bracket UI (client) and the scoring engine (server).
+// Playoff bracket construction. Pure functions over a picks object — shared by
+// the interactive bracket UI (client) and the scoring engine (server).
 //
-// Seeding note (matches the prototype): division winners take seeds 1–4 in the
-// order divisions are listed for the conference, and wildcards take seeds 5–7
-// in the order they were picked. This is a deliberate simplification — real
-// NFL seeding is by record. See README for the planned "rank your seeds"
-// enhancement.
+// Seeding (see getSeeds): division winners take seeds 1–4 ordered by projected
+// wins, then wildcards take seeds 5–7 ordered by projected wins — a wildcard
+// never outseeds a division winner. Equal win totals fall back to a
+// deterministic order, so seeding is never random.
+//
+// This module only has win totals to work with (it runs on the client, with no
+// game-level slate), so it can't apply the full NFL tiebreaker cascade. On the
+// "matchups" track, where every game is called, the field itself is chosen with
+// the real cascade server-side in deriveField (src/lib/sync.ts) →
+// src/lib/tiebreakers.ts; the wildcard order it produces flows through getSeeds
+// unchanged. Seed order among division winners tied on record still uses the
+// deterministic fallback here.
 
 import { Conference, DIVISIONS, divisionsFor } from "./teams";
 

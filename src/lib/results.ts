@@ -92,9 +92,32 @@ export async function getActuals(season = SEASON, forceRefresh = false): Promise
 }
 
 // Map of gameId -> winning abbr for a completed (or in-progress) week.
+//
+// Backed by the DB cache (kind "week:<n>") so the leaderboard — which asks for
+// finals once per week that has any picks, on every load — doesn't hit ESPN for
+// every past week each time. A week whose games are all final never changes, so
+// once complete it's served from cache regardless of age; an in-progress week
+// re-fetches after the normal staleness window.
 export async function getWeekFinals(season: number, week: number): Promise<Map<string, string>> {
+  const kind = `week:${week}`;
+  const toMap = (finals: Record<string, string> | undefined) =>
+    new Map<string, string>(Object.entries(finals ?? {}));
+
+  const cached = await readCache(season, kind);
+  if (cached) {
+    if (cached.data?.complete) return toMap(cached.data.finals); // final forever
+    if (Date.now() - cached.fetchedAt.getTime() < STALE_MS) return toMap(cached.data.finals);
+  }
+
   const games = await getScoreboard(season, week, 2);
-  const m = new Map<string, string>();
-  for (const g of games) if (g.winner) m.set(g.id, g.winner);
-  return m;
+  if (!games.length) {
+    // Fetch produced nothing (ESPN hiccup / week not posted) — keep stale cache.
+    return toMap(cached?.data?.finals);
+  }
+
+  const finals: Record<string, string> = {};
+  for (const g of games) if (g.winner) finals[g.id] = g.winner;
+  const complete = games.every((g) => g.state === "post");
+  await writeCache(season, kind, { finals, complete });
+  return toMap(finals);
 }

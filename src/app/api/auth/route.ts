@@ -7,11 +7,22 @@ import {
   clearSessionCookie,
   handleFor,
 } from "@/lib/auth";
+import { rateLimit } from "@/lib/ratelimit";
 
 // POST /api/auth  { displayName, pin }
 // If the name already exists, this logs in (PIN must match). Otherwise it
 // creates the member. Right-sized for a small private league.
 export async function POST(req: Request) {
+  // Throttle join/login attempts per client so a 4-digit PIN can't be
+  // brute-forced: 10 attempts per 10 minutes per IP.
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!rateLimit(`auth:${ip}`, 10, 10 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please wait a few minutes and try again." },
+      { status: 429 },
+    );
+  }
+
   let body: { displayName?: string; pin?: string };
   try {
     body = await req.json();

@@ -110,16 +110,20 @@ push` runs on each boot, so schema changes roll out with your code.
 Season predictions and weekly picks both feed the leaderboard. Defaults live in
 `src/lib/scoring.ts` and are easy to tune:
 
-| Correct prediction            | Points |
-| ----------------------------- | ------ |
-| Division winner               | 10     |
-| Wild-card team (made the field)| 8     |
-| Wild Card round game          | 5      |
-| Divisional round game         | 10     |
-| Conference Championship       | 15     |
-| Super Bowl team               | 20     |
-| Super Bowl champion           | 30     |
-| Weekly straight-up game       | 1      |
+| Correct prediction             | Points |
+| ------------------------------ | ------ |
+| Division winner                | 10     |
+| Wild-card team (made the field)| 8      |
+| Wild Card round game           | 5      |
+| Divisional round game          | 10     |
+| Conference Championship / Super Bowl team | 15 |
+| Super Bowl champion            | 30     |
+| Weekly straight-up game        | 1      |
+
+A team reaches the Super Bowl by winning its conference championship game, so
+"Conference Championship" and "Super Bowl team" are the same prediction — they're
+scored once, under a single award, not both (which would double-count the same
+correct call).
 
 Bracket rounds are scored by **set membership** ("did the team you advanced
 actually advance this round?"), so it stays fair even if your predicted seeding
@@ -150,9 +154,28 @@ prisma/schema.prisma  data model
 
 Seeds are computed like the real NFL: division winners take seeds 1–4 (ordered
 by wins), wild cards take 5–7 (ordered by wins) — a wild card never outseeds a
-division winner, even with a better record. Ties fall back to a deterministic
-order, so seeding is never random. Those seeds drive every bracket matchup
-(byes, reseeding, etc.).
+division winner, even with a better record. Those seeds drive every bracket
+matchup (byes, reseeding, etc.).
+
+**Tiebreakers.** How ties are broken depends on the track, because the two
+tracks expose different information:
+
+- **`manual`** — you only enter each team's win *total*, so head-to-head,
+  division record, and the rest of the NFL cascade simply don't exist to
+  compute. Equal win totals fall back to a fixed, deterministic order, so
+  seeding is never random. This is a documented simplification of the real
+  rules.
+- **`matchups`** — you've called *every* game, which fixes the result of every
+  matchup, so the field is chosen with the real NFL cascade in
+  `src/lib/tiebreakers.ts`: head-to-head → division record → common games →
+  conference record → strength of victory → strength of schedule. The one piece
+  we can't reproduce is the point-based tail of the cascade (points for/against,
+  net points, net TDs) — the slate is win/loss only, with no scores — so those
+  final steps and the NFL's coin toss are replaced by a deterministic team
+  order. Two-club ties resolve exactly; three-plus-club ties use a pairwise
+  approximation of the eliminate-and-restart procedure. (Seed *order* among
+  division winners tied on record also uses the deterministic fallback, since
+  that ordering runs client-side without the game slate.)
 
 **Two exclusive tracks (`pickMode` on the season entry).** How the bracket
 *field* is built is a per-entry choice, and the two never blend — which is what
@@ -165,7 +188,8 @@ kept manual picks and derived records from contradicting each other:
   team by wins) and each conference's wild cards (the best three remaining);
   seeds follow from the same records. Until the slate is complete there is no
   field yet, so the bracket can't be locked (the page shows a progress bar).
-  Record ties fall back to a deterministic team order.
+  Because every game is called, record ties are broken with the real NFL
+  tiebreaker cascade (`src/lib/tiebreakers.ts`); see **Seeding** below.
 
 All of this runs server-side in `syncEntry` (`src/lib/sync.ts`) and is persisted,
 so scoring, the leaderboard, and the Divisions view all read the effective

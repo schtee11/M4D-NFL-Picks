@@ -10,7 +10,14 @@ const COOKIE = "m4d_session";
 const MAX_AGE = 60 * 60 * 24 * 180; // 180 days
 
 function secret(): string {
-  return process.env.SESSION_SECRET || "dev-insecure-secret-change-me";
+  const s = process.env.SESSION_SECRET;
+  if (s) return s;
+  // Fail closed in production: without a real secret, session cookies are signed
+  // with a value that's public in this repo, so anyone could forge a session.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET must be set in production");
+  }
+  return "dev-insecure-secret-change-me";
 }
 
 // ── PIN hashing ──────────────────────────────────────────────────────────────

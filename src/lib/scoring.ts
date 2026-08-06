@@ -21,8 +21,12 @@ export const SCORING = {
   wildcard: 8,
   wildCardGame: 5,
   divisionalGame: 10,
+  // Awarded per correctly-predicted conference champion. A conference champion
+  // IS a Super Bowl participant (winning the conference title game is how you
+  // reach the Super Bowl), so this single award covers "you called the Super
+  // Bowl matchup" — there is no separate Super Bowl-team award, which would
+  // score the exact same event twice.
   conferenceGame: 15,
-  superBowlTeam: 20,
   champion: 30,
   weeklyGame: 1,
 };
@@ -32,8 +36,7 @@ export interface ScoreBreakdown {
   wildcards: number;
   wildCardRound: number;
   divisionalRound: number;
-  conferenceRound: number;
-  superBowl: number;
+  conferenceRound: number; // correctly-predicted conference champions / SB teams
   champion: number;
   weekly: number;
   total: number;
@@ -46,7 +49,6 @@ export function emptyBreakdown(): ScoreBreakdown {
     wildCardRound: 0,
     divisionalRound: 0,
     conferenceRound: 0,
-    superBowl: 0,
     champion: 0,
     weekly: 0,
     total: 0,
@@ -97,11 +99,12 @@ export function scoreSeason(picks: SeasonPicks, actuals: Actuals): ScoreBreakdow
 
     b.wildCardRound = countIntersection(myWc, playoffs.wildCardWinners) * SCORING.wildCardGame;
     b.divisionalRound = countIntersection(myDiv, playoffs.divisionalWinners) * SCORING.divisionalGame;
+    // The conference-championship winners you advanced ARE your Super Bowl
+    // participants, so this single award covers both — no separate SB-team
+    // award, which would double-count the same prediction.
     b.conferenceRound = countIntersection(myConf, playoffs.conferenceWinners) * SCORING.conferenceGame;
-    // Super Bowl participants correct (the two conference winners you sent):
-    if (sb) {
-      b.superBowl = countIntersection([sb.teamA, sb.teamB], playoffs.conferenceWinners) * SCORING.superBowlTeam;
-      if (sb.winner && sb.winner === playoffs.superBowlChampion) b.champion = SCORING.champion;
+    if (sb && sb.winner && sb.winner === playoffs.superBowlChampion) {
+      b.champion = SCORING.champion;
     }
   }
 
@@ -111,7 +114,6 @@ export function scoreSeason(picks: SeasonPicks, actuals: Actuals): ScoreBreakdow
     b.wildCardRound +
     b.divisionalRound +
     b.conferenceRound +
-    b.superBowl +
     b.champion +
     b.weekly;
   return b;

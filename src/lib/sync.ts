@@ -24,6 +24,7 @@ import { getSeasonSchedule, Game } from "./espn";
 import { getEntry, parseEntry, parsePickMode, PickMode } from "./picks";
 import { SeasonPicks, canLock } from "./bracket";
 import { Conference, CONFERENCES, DIVISIONS } from "./teams";
+import { GameResult, buildTieContext, pickDivisionWinner, rankWildcards } from "./tiebreakers";
 import type { SeasonEntry } from "@prisma/client";
 
 const SCHEDULE_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours — the schedule rarely moves.
@@ -68,6 +69,7 @@ export interface WeeklyDerived {
   allComplete: boolean; // every scheduled team's slate is picked — matchups fully done
   pickedGames: number; // scheduled games the user has called
   totalGames: number; // scheduled games in the season
+  results: GameResult[]; // winner/loser of every called game — drives tiebreakers
 }
 
 // Build each team's picked-win total from the user's weekly picks and mark the
@@ -87,12 +89,18 @@ export async function getWeeklyDerived(userId: string, season = SEASON): Promise
   const gameById = new Map(schedule.map((g) => [g.id, g]));
   const wins: Record<string, number> = {};
   const pickedByTeam: Record<string, number> = {};
+  const results: GameResult[] = [];
   let pickedGames = 0;
   for (const p of picks) {
     const g = gameById.get(p.gameId);
     if (!g) continue; // pick for a game not on the known schedule
+    // The picked team must actually be in this game, or the "win" is bogus.
+    const loser =
+      p.pickedTeam === g.home.abbr ? g.away.abbr : p.pickedTeam === g.away.abbr ? g.home.abbr : null;
+    if (!loser) continue;
     pickedGames += 1;
     wins[p.pickedTeam] = (wins[p.pickedTeam] ?? 0) + 1;
+    results.push({ winner: p.pickedTeam, loser });
     // A pick decides the game for BOTH participants (one win, one loss).
     if (g.home.abbr) pickedByTeam[g.home.abbr] = (pickedByTeam[g.home.abbr] ?? 0) + 1;
     if (g.away.abbr) pickedByTeam[g.away.abbr] = (pickedByTeam[g.away.abbr] ?? 0) + 1;
@@ -106,7 +114,7 @@ export async function getWeeklyDerived(userId: string, season = SEASON): Promise
   // done and records become the sole driver of the playoff field.
   const scheduledTeams = Object.keys(totalByTeam);
   const allComplete = scheduledTeams.length > 0 && scheduledTeams.every((t) => complete.has(t));
-  return { wins, complete, allComplete, pickedGames, totalGames: schedule.length };
+  return { wins, complete, allComplete, pickedGames, totalGames: schedule.length, results };
 }
 
 // Manual projections with weekly-derived totals overlaid for any team whose
@@ -117,25 +125,35 @@ export function effectiveRecords(picks: SeasonPicks, derived: WeeklyDerived): Re
   return out;
 }
 
-// Derive the entire playoff field from records. Used only when every matchup is
-// picked, so records are authoritative: each division's winner is its best team
-// by wins, and each conference's wildcards are the best three non-winners.
-// Record ties fall back to the user's prior manual pick, then to a fixed team
-// order, so the result is deterministic and never churns on equal records.
+// Derive the entire playoff field from a fully-called slate. Records give the
+// primary ordering (most wins), and `results` (winner/loser of every game) lets
+// us break ties with the real NFL cascade — head-to-head, division/conference
+// record, common games, strength of victory/schedule — via `./tiebreakers`.
+// Everything is deterministic, so the field never churns on equal records.
+//
+// `results` is optional: when it's absent (or empty) we fall back to raw win
+// count with a fixed team-order tiebreak, preserving the previous behavior for
+// any caller that hasn't got the game-level slate on hand.
 export function deriveField(
   records: Record<string, number>,
   divisionPicks: Record<string, string>,
   wildcards: Record<Conference, string[]>,
+  results?: GameResult[],
 ): { divisionPicks: Record<string, string>; wildcards: Record<Conference, string[]> } {
   const winsOf = (t: string) => (typeof records[t] === "number" ? records[t] : 0);
   const orderIndex = new Map(DIVISIONS.flatMap((d) => d.teams).map((t, i) => [t, i] as const));
   const teamOrder = (t: string) => orderIndex.get(t) ?? Number.MAX_SAFE_INTEGER;
+  const ctx = results && results.length ? buildTieContext(results, winsOf, teamOrder) : null;
 
   const dp: Record<string, string> = {};
   for (const div of DIVISIONS) {
+    if (ctx) {
+      dp[div.key] = pickDivisionWinner(ctx, div.teams);
+      continue;
+    }
+    // No slate on hand: best by wins, ties held stable by prior pick then order.
     let best = div.teams[0];
     for (const t of div.teams) if (winsOf(t) > winsOf(best)) best = t;
-    // Tie: keep the user's prior winner if it shares the division's top record.
     const prev = divisionPicks[div.key];
     if (prev && div.teams.includes(prev) && winsOf(prev) === winsOf(best)) best = prev;
     dp[div.key] = best;
@@ -144,14 +162,19 @@ export function deriveField(
   const wc: Record<Conference, string[]> = { AFC: [], NFC: [] };
   for (const conf of CONFERENCES) {
     const winners = new Set(DIVISIONS.filter((d) => d.conf === conf).map((d) => dp[d.key]));
+    const pool = DIVISIONS.filter((d) => d.conf === conf)
+      .flatMap((d) => d.teams)
+      .filter((t) => !winners.has(t));
+    if (ctx) {
+      wc[conf] = rankWildcards(ctx, pool).slice(0, 3);
+      continue;
+    }
     const prev = wildcards[conf] ?? [];
     const prevRank = (t: string) => {
       const i = prev.indexOf(t);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    wc[conf] = DIVISIONS.filter((d) => d.conf === conf)
-      .flatMap((d) => d.teams)
-      .filter((t) => !winners.has(t))
+    wc[conf] = pool
       .sort((a, b) => winsOf(b) - winsOf(a) || prevRank(a) - prevRank(b) || teamOrder(a) - teamOrder(b))
       .slice(0, 3);
   }
@@ -211,7 +234,7 @@ export async function syncEntry(
   let divisionPicks: Record<string, string> = {};
   let wildcards: Record<Conference, string[]> = { AFC: [], NFC: [] };
   if (derived.allComplete) {
-    const field = deriveField(records, base.divisionPicks, base.wildcards);
+    const field = deriveField(records, base.divisionPicks, base.wildcards, derived.results);
     divisionPicks = field.divisionPicks;
     wildcards = field.wildcards;
   }
