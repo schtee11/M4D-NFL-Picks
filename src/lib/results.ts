@@ -8,11 +8,9 @@ import {
   getStandings,
   getPlayoffResults,
   getScoreboard,
-  getDivisionStandingsFull,
   isRegularSeasonComplete,
   ActualStandings,
   PlayoffResults,
-  DivisionStanding,
 } from "./espn";
 import { Actuals } from "./scoring";
 
@@ -91,52 +89,6 @@ export async function getActuals(season = SEASON, forceRefresh = false): Promise
   }
 
   return { standings, playoffs };
-}
-
-// Full division standings with the live playoff picture, cached like the other
-// results so a transient ESPN hiccup falls back to the last good copy rather
-// than blanking the page. Unlike getActuals this is never gated on the season
-// being over — it's a running snapshot of every team's record.
-export async function getDivisionRecords(
-  season = SEASON,
-  forceRefresh = false,
-): Promise<DivisionStanding[] | null> {
-  const cache = await readCache(season, "divStandings");
-  const fresh = cache && Date.now() - cache.fetchedAt.getTime() < STALE_MS;
-  if (!forceRefresh && fresh) return cache!.data;
-
-  const fetched = await getDivisionStandingsFull(season);
-  if (fetched && fetched.length) {
-    await writeCache(season, "divStandings", fetched);
-    return fetched;
-  }
-  return cache ? cache.data : null; // fall back to stale cache on failure
-}
-
-export interface DivisionsView {
-  divisions: DivisionStanding[] | null; // ESPN standings, or null if unreachable
-  season: number; // the season the standings actually describe
-  isFallback: boolean; // true when we fell back to a prior completed season
-  live: boolean; // true once the shown season has games (seeds are meaningful)
-}
-
-const hasGames = (d: DivisionStanding[] | null) =>
-  !!d && d.some((x) => x.teams.some((t) => t.wins + t.losses + t.ties > 0));
-
-// Standings to show on the Divisions page. Prefers the configured season, but
-// during the long preseason window (or if that season isn't published yet)
-// falls back to the previous season's final standings so there's always real
-// data — including who actually made the playoffs — rather than 32 zeros.
-export async function getDivisionsView(forceRefresh = false): Promise<DivisionsView> {
-  const primary = await getDivisionRecords(SEASON, forceRefresh);
-  if (hasGames(primary)) return { divisions: primary, season: SEASON, isFallback: false, live: true };
-
-  const prev = await getDivisionRecords(SEASON - 1, forceRefresh);
-  if (hasGames(prev)) return { divisions: prev, season: SEASON - 1, isFallback: true, live: true };
-
-  // Nothing anywhere — hand back whatever we have (possibly null) so the page
-  // can still render the division structure with empty records.
-  return { divisions: primary, season: SEASON, isFallback: false, live: false };
 }
 
 // Map of gameId -> winning abbr for a completed (or in-progress) week.

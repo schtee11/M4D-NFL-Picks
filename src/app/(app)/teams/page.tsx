@@ -1,69 +1,75 @@
-import { getDivisionsView } from "@/lib/results";
+import Link from "next/link";
+import { getCurrentUser } from "@/lib/auth";
+import { getEntry, parseEntry } from "@/lib/picks";
 import { SEASON } from "@/lib/config";
 import { CONFERENCES, DIVISIONS, teamName, type Conference } from "@/lib/teams";
+import { getSeeds, projectedWins, picksMade, REGULAR_SEASON_GAMES } from "@/lib/bracket";
 import { TeamLogo } from "@/components/TeamLogo";
-import type { DivisionStanding, DivisionTeamRecord } from "@/lib/espn";
+import { ChevronRight } from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
-// Build the full 8-division / 32-team layout from static reference data, then
-// overlay whatever records + seeds ESPN gave us. This way the page always shows
-// every team by division even when live standings aren't available.
-function buildModel(divisions: DivisionStanding[] | null): DivisionStanding[] {
-  const byKey = new Map((divisions ?? []).map((d) => [d.key, d]));
-  return DIVISIONS.map(
-    (d) =>
-      byKey.get(d.key) ?? {
-        key: d.key,
-        conf: d.conf,
-        teams: d.teams.map(
-          (abbr): DivisionTeamRecord => ({
-            abbr,
-            wins: 0,
-            losses: 0,
-            ties: 0,
-            pct: 0,
-            seed: null,
-            status: "out",
-            clinch: null,
-          }),
-        ),
-      },
-  );
+type Status = "division" | "wildcard" | "out";
+
+interface Row {
+  abbr: string;
+  status: Status;
+  seed: number | null; // this team's seed in the user's bracket (1-7)
+  wins: number | null; // projected wins, null when the user hasn't set a total
 }
 
 export default async function TeamsPage() {
-  const view = await getDivisionsView();
-  const model = buildModel(view.divisions);
-  const showSeeds = view.live;
+  const user = await getCurrentUser();
+  const entry = user ? await getEntry(user.id) : null;
+  const picks = parseEntry(entry);
+  const hasPicks = picksMade(picks) > 0;
+
+  // Seed each team from the user's own bracket (division winners 1-4, wild
+  // cards 5-7, ordered by projected wins).
+  const seedByTeam = new Map<string, number>();
+  for (const conf of CONFERENCES) {
+    for (const s of getSeeds(conf, picks)) seedByTeam.set(s.team, s.seed);
+  }
+
+  const rowFor = (conf: Conference, divKey: string, abbr: string): Row => {
+    const status: Status =
+      picks.divisionPicks[divKey] === abbr
+        ? "division"
+        : (picks.wildcards[conf] ?? []).includes(abbr)
+          ? "wildcard"
+          : "out";
+    const wins = typeof picks.records?.[abbr] === "number" ? projectedWins(picks, abbr) : null;
+    return { abbr, status, seed: seedByTeam.get(abbr) ?? null, wins };
+  };
 
   return (
     <div className="narrow">
       <h4 style={{ margin: "0 0 2px" }}>Divisions</h4>
       <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
-        {view.isFallback
-          ? `Final ${view.season} standings · the top 7 in each conference made the playoffs`
-          : `${view.season} standings · the top 7 in each conference make the playoffs`}
+        {SEASON} · your picks — division winners and wild cards you have making the playoffs
       </p>
 
-      {view.isFallback && (
-        <div
-          className="card elev-sm"
-          style={{ padding: 14, marginBottom: 12, fontSize: 12.5, opacity: 0.8 }}
-        >
-          The {SEASON} season hasn&apos;t kicked off yet — showing last season&apos;s final
-          results. This page switches to live {SEASON} standings once games are played.
-        </div>
-      )}
-
-      {!view.isFallback && !view.live && (
-        <div
-          className="card elev-sm"
-          style={{ padding: 14, marginBottom: 12, fontSize: 12.5, opacity: 0.8 }}
-        >
-          Live standings aren&apos;t available right now. Every team is listed below by division;
-          records and the playoff picture will fill in once the season starts.
-        </div>
+      {!hasPicks && (
+        <Link href="/picks" style={{ textDecoration: "none", color: "inherit" }}>
+          <div
+            className="card elev-sm"
+            style={{
+              padding: 14,
+              marginBottom: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <div style={{ flex: 1, fontSize: 12.5, opacity: 0.85 }}>
+              You haven&apos;t made any picks yet. Choose your division winners and wild cards on
+              the Bracket page and they&apos;ll show up here.
+            </div>
+            <span style={{ color: "var(--color-accent)", flex: "none" }}>
+              <ChevronRight size={14} />
+            </span>
+          </div>
+        </Link>
       )}
 
       <Legend />
@@ -72,8 +78,8 @@ export default async function TeamsPage() {
         <ConferenceSection
           key={conf}
           conf={conf}
-          divisions={model.filter((d) => d.conf === conf)}
-          showSeeds={showSeeds}
+          rowFor={rowFor}
+          highlight={hasPicks}
         />
       ))}
     </div>
@@ -119,56 +125,69 @@ function Legend() {
 
 function ConferenceSection({
   conf,
-  divisions,
-  showSeeds,
+  rowFor,
+  highlight,
 }: {
   conf: Conference;
-  divisions: DivisionStanding[];
-  showSeeds: boolean;
+  rowFor: (conf: Conference, divKey: string, abbr: string) => Row;
+  highlight: boolean;
 }) {
-  if (!divisions.length) return null;
+  const divisions = DIVISIONS.filter((d) => d.conf === conf);
   return (
     <section style={{ marginTop: 18 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
         <h5 style={{ margin: 0 }}>{conf}</h5>
-        <span style={{ fontSize: 11.5, opacity: 0.5 }}>7 playoff spots</span>
+        <span style={{ fontSize: 11.5, opacity: 0.5 }}>1 division winner · 3 wild cards</span>
       </div>
       <div className="grid-2">
-        {divisions.map((d) => (
-          <DivisionCard key={d.key} division={d} showSeeds={showSeeds} />
-        ))}
+        {divisions.map((d) => {
+          const rows = d.teams
+            .map((abbr) => rowFor(conf, d.key, abbr))
+            .sort(compareRows);
+          return <DivisionCard key={d.key} name={d.key} rows={rows} highlight={highlight} />;
+        })}
       </div>
     </section>
   );
 }
 
+function compareRows(a: Row, b: Row): number {
+  const rank = (s: Status) => (s === "division" ? 0 : s === "wildcard" ? 1 : 2);
+  if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+  const sa = a.seed ?? 99;
+  const sb = b.seed ?? 99;
+  if (sa !== sb) return sa - sb;
+  return (b.wins ?? -1) - (a.wins ?? -1);
+}
+
 function DivisionCard({
-  division,
-  showSeeds,
+  name,
+  rows,
+  highlight,
 }: {
-  division: DivisionStanding;
-  showSeeds: boolean;
+  name: string;
+  rows: Row[];
+  highlight: boolean;
 }) {
   return (
     <div className="card elev-sm" style={{ padding: "10px 12px 12px", gap: 6 }}>
       <div className="card-kicker" style={{ marginBottom: 2 }}>
-        {division.key}
+        {name}
       </div>
-      {division.teams.map((t) => (
-        <TeamRow key={t.abbr} team={t} showSeeds={showSeeds} />
+      {rows.map((r) => (
+        <TeamRow key={r.abbr} row={r} highlight={highlight} />
       ))}
     </div>
   );
 }
 
-function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boolean }) {
-  const inPlayoffs = showSeeds && team.status !== "out";
+function TeamRow({ row, highlight }: { row: Row; highlight: boolean }) {
+  const inPlayoffs = highlight && row.status !== "out";
   const record =
-    team.ties > 0 ? `${team.wins}-${team.losses}-${team.ties}` : `${team.wins}-${team.losses}`;
+    row.wins != null ? `${row.wins}-${Math.max(0, REGULAR_SEASON_GAMES - row.wins)}` : "—";
 
   return (
     <div
-      title={team.clinch ?? undefined}
       style={{
         display: "flex",
         alignItems: "center",
@@ -178,10 +197,10 @@ function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boo
         background: inPlayoffs
           ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
           : "transparent",
-        opacity: showSeeds && team.status === "out" ? 0.5 : 1,
+        opacity: highlight && row.status === "out" ? 0.5 : 1,
       }}
     >
-      <TeamLogo id={team.abbr} size={22} />
+      <TeamLogo id={row.abbr} size={22} />
       <span
         style={{
           flex: 1,
@@ -192,20 +211,20 @@ function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boo
           textOverflow: "ellipsis",
         }}
       >
-        {teamName(team.abbr)}
+        {teamName(row.abbr)}
       </span>
       <span
         style={{
           fontSize: 13,
           fontVariantNumeric: "tabular-nums",
-          opacity: 0.8,
+          opacity: row.wins != null ? 0.8 : 0.4,
           flex: "none",
         }}
       >
         {record}
       </span>
       {inPlayoffs ? (
-        <SeedChip seed={team.seed} status={team.status} />
+        <SeedChip seed={row.seed} status={row.status} />
       ) : (
         <span style={{ width: 20, flex: "none" }} aria-hidden />
       )}
@@ -213,13 +232,7 @@ function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boo
   );
 }
 
-function SeedChip({
-  seed,
-  status,
-}: {
-  seed: number | null;
-  status: DivisionTeamRecord["status"];
-}) {
+function SeedChip({ seed, status }: { seed: number | null; status: Status }) {
   const isDivision = status === "division";
   return (
     <span
