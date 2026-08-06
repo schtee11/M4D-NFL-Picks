@@ -26,13 +26,6 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { TrophyIcon, ChevronRight, ShareIcon } from "@/components/icons";
 import ShareSheet from "@/components/ShareSheet";
 
-interface Swap {
-  kind: "division" | "wildcard";
-  division: string;
-  promoted: string;
-  demoted: string;
-}
-
 const kicker: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: ".06em",
@@ -48,7 +41,7 @@ export default function PredictionScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [derivedTeams, setDerivedTeams] = useState<string[]>([]);
-  const [swaps, setSwaps] = useState<Swap[]>([]);
+  const [fieldLocked, setFieldLocked] = useState(false);
   const [meta, setMeta] = useState({ name: "", league: "", season: 0 });
   const [shareOpen, setShareOpen] = useState(false);
 
@@ -60,13 +53,16 @@ export default function PredictionScreen() {
         setLocked(!!d.locked);
         setDeadline(!!d.deadlinePassed);
         setDerivedTeams(d.derivedTeams || []);
-        setSwaps(d.swaps || []);
+        setFieldLocked(!!d.fieldLocked);
         setMeta({ name: d.displayName || "", league: d.league || "", season: d.season || 0 });
       })
       .finally(() => setLoading(false));
   }, []);
 
   const editable = !locked && !deadlinePassed;
+  // Once every matchup is picked, records drive the division winners and
+  // wildcards — the manual pick controls for those steps are disabled.
+  const fieldEditable = editable && !fieldLocked;
 
   const persistPicks = useCallback(async (next: SeasonPicks) => {
     setSaving(true);
@@ -85,7 +81,7 @@ export default function PredictionScreen() {
       if (d?.picks) {
         setPicks(d.picks);
         setDerivedTeams(d.derivedTeams || []);
-        setSwaps(d.swaps || []);
+        setFieldLocked(!!d.fieldLocked);
       }
     }
     setSaving(false);
@@ -112,7 +108,7 @@ export default function PredictionScreen() {
   }
 
   function pickDivisionWinner(divKey: string, teamId: string) {
-    if (!editable) return;
+    if (!fieldEditable) return;
     setPicks((s) => {
       const divisionPicks = { ...s.divisionPicks, [divKey]: teamId };
       const winners = new Set(Object.values(divisionPicks));
@@ -127,7 +123,7 @@ export default function PredictionScreen() {
   }
 
   function toggleWildcard(conf: Conference, teamId: string) {
-    if (!editable) return;
+    if (!fieldEditable) return;
     setPicks((s) => {
       const cur = s.wildcards[conf];
       let nextArr: string[];
@@ -208,6 +204,20 @@ export default function PredictionScreen() {
         <ShareSheet picks={picks} name={meta.name} league={meta.league} season={meta.season} onClose={() => setShareOpen(false)} />
       )}
 
+      {/* Records now drive the field — manual division/wildcard picks are off. */}
+      {fieldLocked && (
+        <div className="card elev-sm" style={{ padding: "10px 12px", marginBottom: 16, borderColor: "var(--color-accent)" }}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            You&apos;ve picked every matchup, so your records now set your division winners and wild cards
+            automatically. Editing them by hand is off — change a game in{" "}
+            <Link href="/weekly" style={{ color: "var(--color-accent)" }}>
+              Matchups
+            </Link>{" "}
+            to reshape your field.
+          </div>
+        </div>
+      )}
+
       {/* ── Step 1 · Division winners ─────────────────────────────────── */}
       <SectionLabel n={1} title="Division winners" hint="Pick one winner in each division." />
       {DIVISIONS.map((d) => (
@@ -219,7 +229,7 @@ export default function PredictionScreen() {
                 key={id}
                 id={id}
                 selected={picks.divisionPicks[d.key] === id}
-                disabled={!editable}
+                disabled={!fieldEditable}
                 onClick={() => pickDivisionWinner(d.key, id)}
               />
             ))}
@@ -248,7 +258,7 @@ export default function PredictionScreen() {
                     key={id}
                     id={id}
                     selected={sel}
-                    disabled={!editable || (!sel && full)}
+                    disabled={!fieldEditable || (!sel && full)}
                     dimmed={!sel && full}
                     onClick={() => toggleWildcard(conf, id)}
                   />
@@ -258,29 +268,6 @@ export default function PredictionScreen() {
           </div>
         );
       })}
-
-      {/* Auto-swap notice */}
-      {swaps.length > 0 && (
-        <div className="card elev-sm" style={{ padding: "10px 12px", marginTop: 16, borderColor: "var(--color-accent)" }}>
-          <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            {swaps.map((s) => (
-              <div key={`${s.kind}:${s.promoted}:${s.demoted}`}>
-                {s.kind === "division" ? (
-                  <>
-                    <strong>{teamName(s.promoted)}</strong> out-won <strong>{teamName(s.demoted)}</strong> in the{" "}
-                    {s.division}, so they swapped — {teamName(s.promoted)} is now your division winner.
-                  </>
-                ) : (
-                  <>
-                    <strong>{teamName(s.promoted)}</strong> out-projected <strong>{teamName(s.demoted)}</strong>, so they
-                    took a wild-card spot — {teamName(s.demoted)} drops out.
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Step 3 · Seeding (slate-primary) ──────────────────────────── */}
       {lockable && (

@@ -21,7 +21,7 @@ export async function GET() {
     canLock: canLock(sync.picks),
     deadlinePassed: deadlinePassed(),
     derivedTeams: sync.derivedTeams,
-    swaps: sync.swaps,
+    fieldLocked: sync.fieldLocked,
     // Labels for the share overview.
     displayName: user.displayName,
     league: LEAGUE_NAME,
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
           ok: true,
           picks: sync.picks,
           derivedTeams: sync.derivedTeams,
-          swaps: sync.swaps,
+          fieldLocked: sync.fieldLocked,
         });
       }
       case "saveBracket": {

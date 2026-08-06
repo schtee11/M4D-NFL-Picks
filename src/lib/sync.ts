@@ -8,16 +8,14 @@
 //     hand in the seeding step. Teams with an incomplete slate keep their
 //     manual projection.
 //
-//  2. Wildcard ↔ division-winner auto-swap. A division winner should be the
-//     best team in its division. If a wildcard sitting in the SAME division as
-//     the chosen winner projects to more wins, it is promoted to division
-//     winner and the former winner drops into that wildcard slot.
-//
-//  3. Wildcard field auto-correction. The wildcards should be the best
-//     non-division-winners in the conference by projected wins. If a team the
-//     user left out out-projects one of the picked wildcards, it takes that
-//     wildcard's slot and the weakest wildcard drops out. This keeps the field
-//     consistent with the records the user's own weekly picks imply.
+//  2. Records drive the playoff field — but only all-or-nothing. Once EVERY
+//     team's matchup slate is picked, the records are the sole source of truth:
+//     each division's winner is its best team by wins and each conference's
+//     wildcards are the best three remaining, derived automatically. Until the
+//     matchups are fully done, the field is left exactly as the user picked it
+//     by hand — partial records never reshape it. (The UI disables the manual
+//     division/wildcard controls once the field is record-driven, so the two
+//     inputs can't contradict each other.)
 //
 // Everything is gated to editable (non-frozen) entries and persists the result,
 // so scoring, the leaderboard, and the bracket all read the reconciled picks.
@@ -69,6 +67,7 @@ export async function getCachedSchedule(season = SEASON): Promise<Game[]> {
 export interface WeeklyDerived {
   wins: Record<string, number>; // team -> games the user picked them to win
   complete: Set<string>; // teams whose entire schedule the user has picked
+  allComplete: boolean; // every scheduled team's slate is picked — matchups fully done
 }
 
 // Build each team's picked-win total from the user's weekly picks and mark the
@@ -101,7 +100,11 @@ export async function getWeeklyDerived(userId: string, season = SEASON): Promise
   for (const [team, total] of Object.entries(totalByTeam)) {
     if (total > 0 && pickedByTeam[team] === total) complete.add(team);
   }
-  return { wins, complete };
+  // Every team that has a schedule has its full slate picked → the matchups are
+  // done and records become the sole driver of the playoff field.
+  const scheduledTeams = Object.keys(totalByTeam);
+  const allComplete = scheduledTeams.length > 0 && scheduledTeams.every((t) => complete.has(t));
+  return { wins, complete, allComplete };
 }
 
 // Manual projections with weekly-derived totals overlaid for any team whose
@@ -112,107 +115,57 @@ export function effectiveRecords(picks: SeasonPicks, derived: WeeklyDerived): Re
   return out;
 }
 
-export interface Swap {
-  kind: "division" | "wildcard";
-  // For a division swap: the division the swap happened in. For a wildcard
-  // swap: the division the promoted (formerly-out) team belongs to.
-  division: string;
-  promoted: string; // team moved up (into the division or into the wildcard field)
-  demoted: string; // team moved down (into a wildcard slot, or out of the field)
-}
-
-const divisionOf = (t: string) => DIVISIONS.find((d) => d.teams.includes(t))?.key ?? "";
-
-// Reconcile a user's picks with the records their weekly picks imply:
-//   1. Promote a same-division wildcard over the chosen division winner when it
-//      projects to strictly more wins (the former winner drops to a wildcard).
-//   2. Ensure the wildcard field holds the best non-division-winners in the
-//      conference — any left-out team that out-projects a picked wildcard takes
-//      that slot, and the weakest wildcard drops out.
-// Ties always keep the user's pick, so reconciliation never churns on equal
-// records and is deterministic. Pure function.
-export function reconcile(
+// Derive the entire playoff field from records. Used only when every matchup is
+// picked, so records are authoritative: each division's winner is its best team
+// by wins, and each conference's wildcards are the best three non-winners.
+// Record ties fall back to the user's prior manual pick, then to a fixed team
+// order, so the result is deterministic and never churns on equal records.
+export function deriveField(
+  records: Record<string, number>,
   divisionPicks: Record<string, string>,
   wildcards: Record<Conference, string[]>,
-  records: Record<string, number>,
-): { divisionPicks: Record<string, string>; wildcards: Record<Conference, string[]>; swaps: Swap[] } {
-  const dp = { ...divisionPicks };
-  const wc: Record<Conference, string[]> = {
-    AFC: [...(wildcards.AFC ?? [])],
-    NFC: [...(wildcards.NFC ?? [])],
-  };
-  const swaps: Swap[] = [];
+): { divisionPicks: Record<string, string>; wildcards: Record<Conference, string[]> } {
   const winsOf = (t: string) => (typeof records[t] === "number" ? records[t] : 0);
+  const orderIndex = new Map(DIVISIONS.flatMap((d) => d.teams).map((t, i) => [t, i] as const));
+  const teamOrder = (t: string) => orderIndex.get(t) ?? Number.MAX_SAFE_INTEGER;
 
-  // ── 1. Division winner ↔ same-division wildcard ────────────────────────────
+  const dp: Record<string, string> = {};
   for (const div of DIVISIONS) {
-    const winner = dp[div.key];
-    if (!winner) continue;
-    const conf = div.conf;
-    // Wildcards this user picked that also belong to this division.
-    const candidates = wc[conf].filter((t) => div.teams.includes(t));
-    if (!candidates.length) continue;
-
-    // Best team by wins; must strictly beat the winner to trigger a swap.
-    let best = winner;
-    for (const c of candidates) if (winsOf(c) > winsOf(best)) best = c;
-    if (best === winner) continue;
-
-    const idx = wc[conf].indexOf(best);
-    wc[conf][idx] = winner; // former winner takes the wildcard slot
-    dp[div.key] = best; // wildcard takes the division
-    swaps.push({ kind: "division", division: div.key, promoted: best, demoted: winner });
+    let best = div.teams[0];
+    for (const t of div.teams) if (winsOf(t) > winsOf(best)) best = t;
+    // Tie: keep the user's prior winner if it shares the division's top record.
+    const prev = divisionPicks[div.key];
+    if (prev && div.teams.includes(prev) && winsOf(prev) === winsOf(best)) best = prev;
+    dp[div.key] = best;
   }
 
-  // ── 2. Wildcard field ↔ left-out teams ─────────────────────────────────────
-  // Runs after step 1 so it sees the reconciled division winners (and any
-  // former winner that dropped into the wildcard field).
+  const wc: Record<Conference, string[]> = { AFC: [], NFC: [] };
   for (const conf of CONFERENCES) {
-    const confDivs = DIVISIONS.filter((d) => d.conf === conf);
-    const winners = new Set(confDivs.map((d) => dp[d.key]).filter(Boolean));
-    const confTeams = confDivs.flatMap((d) => d.teams);
-
-    // Teams eligible to be a wildcard but currently left out, best record first.
-    // We only ever swap an out team for a *picked* wildcard — never fill an
-    // empty slot — so the user's field size is left untouched.
-    const outPool = () =>
-      confTeams
-        .filter((t) => !winners.has(t) && !wc[conf].includes(t))
-        .sort((a, b) => winsOf(b) - winsOf(a) || confTeams.indexOf(a) - confTeams.indexOf(b));
-
-    // Greedily replace the weakest wildcard with the best out team while it
-    // strictly out-projects it. Each swap strictly raises the total wildcard
-    // wins, which is bounded, so the loop terminates.
-    for (;;) {
-      const pool = outPool();
-      if (!pool.length) break;
-      const bestOut = pool[0];
-      // Weakest current wildcard; on a tie demote the later pick (keeps earlier
-      // picks stickier, matching the tie-goes-to-the-user rule).
-      let worstIdx = -1;
-      for (let i = 0; i < wc[conf].length; i++) {
-        if (worstIdx === -1 || winsOf(wc[conf][i]) <= winsOf(wc[conf][worstIdx])) worstIdx = i;
-      }
-      if (worstIdx === -1) break;
-      const worstWc = wc[conf][worstIdx];
-      if (winsOf(bestOut) <= winsOf(worstWc)) break; // no strict improvement
-      wc[conf][worstIdx] = bestOut;
-      swaps.push({ kind: "wildcard", division: divisionOf(bestOut), promoted: bestOut, demoted: worstWc });
-    }
+    const winners = new Set(DIVISIONS.filter((d) => d.conf === conf).map((d) => dp[d.key]));
+    const prev = wildcards[conf] ?? [];
+    const prevRank = (t: string) => {
+      const i = prev.indexOf(t);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    wc[conf] = DIVISIONS.filter((d) => d.conf === conf)
+      .flatMap((d) => d.teams)
+      .filter((t) => !winners.has(t))
+      .sort((a, b) => winsOf(b) - winsOf(a) || prevRank(a) - prevRank(b) || teamOrder(a) - teamOrder(b))
+      .slice(0, 3);
   }
-
-  return { divisionPicks: dp, wildcards: wc, swaps };
+  return { divisionPicks: dp, wildcards: wc };
 }
 
 export interface SyncResult {
-  picks: SeasonPicks; // effective picks: records overlaid, div/wildcard reconciled
+  picks: SeasonPicks; // effective picks: records overlaid, field derived when locked
   derivedTeams: string[]; // teams whose wins now come from a completed weekly slate
-  swaps: Swap[]; // auto-swaps applied on this pass
+  fieldLocked: boolean; // matchups fully done → division/wildcard picks are record-driven
 }
 
-// Load an entry, apply the weekly override + auto-swap, persist any change, and
-// return the effective picks. A frozen (locked or past-deadline) entry is left
-// untouched — predictions are final once locked in.
+// Load an entry, apply the weekly record override, and — once the matchups are
+// fully done — derive the playoff field from those records. Persists any change
+// and returns the effective picks. A frozen (locked or past-deadline) entry is
+// left untouched: predictions are final once locked in.
 export async function syncEntry(
   userId: string,
   frozen: boolean,
@@ -221,11 +174,20 @@ export async function syncEntry(
 ): Promise<SyncResult> {
   const row = entry ?? (await getEntry(userId, season));
   const base = parseEntry(row);
-  if (!row || frozen) return { picks: base, derivedTeams: [], swaps: [] };
+  if (!row || frozen) return { picks: base, derivedTeams: [], fieldLocked: false };
 
   const derived = await getWeeklyDerived(userId, season);
   const records = effectiveRecords(base, derived);
-  const { divisionPicks, wildcards, swaps } = reconcile(base.divisionPicks, base.wildcards, records);
+
+  // The field is record-driven ONLY when every matchup is picked. Until then the
+  // user's hand-picked division winners and wildcards stand untouched.
+  let divisionPicks = base.divisionPicks;
+  let wildcards = base.wildcards;
+  if (derived.allComplete) {
+    const field = deriveField(records, base.divisionPicks, base.wildcards);
+    divisionPicks = field.divisionPicks;
+    wildcards = field.wildcards;
+  }
 
   const changed =
     JSON.stringify(records) !== JSON.stringify(base.records) ||
@@ -246,6 +208,6 @@ export async function syncEntry(
   return {
     picks: { divisionPicks, wildcards, bracketPicks: base.bracketPicks, records },
     derivedTeams: [...derived.complete],
-    swaps,
+    fieldLocked: derived.allComplete,
   };
 }

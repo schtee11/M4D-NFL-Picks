@@ -28,11 +28,12 @@ League).
   it in or the deadline passes.
 - **Intertwined & smart** — a fully picked weekly slate sets that team's
   projected record automatically, overriding the manual seeding. Don't want to
-  call every game? Set win totals by hand on the Bracket page instead. And the
-  app keeps your field consistent with those records: if a wild card you picked
-  ends up with more wins than the division winner in its own division they swap,
-  and if a team you left out out-projects one of your wild cards it takes that
-  wild-card spot.
+  call every game? Set win totals by hand on the Bracket page instead. And it's
+  all-or-nothing: once you've picked *every* matchup, your records become the
+  single source of truth — division winners and wild cards are derived from them
+  automatically and the manual pick controls switch off, so the two can never
+  contradict each other. Until the matchups are fully done, your hand-picked
+  field stands exactly as you set it.
 - **Leaderboard** — everyone ranked by points, updated as results come in.
 - **Live NFL data** — schedule, scores, standings, and playoff results come from
   ESPN's public API.
@@ -162,11 +163,15 @@ shows a **Slate set** badge and is read-only. This all runs server-side in
 all read the reconciled picks. Reconciliation only happens while your picks are
 still editable; once you lock in (or the deadline passes) predictions are frozen.
 
-**Auto-swap.** A division winner should be the best team in its division. If a
-wild card you picked in the *same division* projects to strictly more wins than
-your chosen division winner, the app promotes the wild card to division winner
-and drops the former winner into that wild-card slot, with a note explaining the
-switch. Ties keep your original pick.
+**Records drive the field — all or nothing.** Once *every* matchup is picked
+(all 32 teams' slates complete), records become the single source of truth:
+`deriveField` in `src/lib/sync.ts` computes each division's winner (its best
+team by wins) and each conference's wild cards (the best three remaining), and
+the Division-winner / Wild-card pick controls switch off so a manual choice
+can't contradict the records. Record ties fall back to your prior manual pick,
+then to a deterministic team order. Until the matchups are fully done, records
+never reshape the field — your hand-picked division winners and wild cards stand
+exactly as you set them.
 
 ## Next steps
 
