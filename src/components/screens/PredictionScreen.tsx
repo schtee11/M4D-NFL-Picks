@@ -23,7 +23,7 @@ import {
 } from "@/lib/bracket";
 import { TeamOption, MatchupSide } from "@/components/TeamPickButton";
 import { TeamLogo } from "@/components/TeamLogo";
-import { TrophyIcon, ChevronRight, ShareIcon } from "@/components/icons";
+import { TrophyIcon, ShareIcon } from "@/components/icons";
 import ShareSheet from "@/components/ShareSheet";
 
 const kicker: React.CSSProperties = {
@@ -42,27 +42,37 @@ export default function PredictionScreen() {
   const [saving, setSaving] = useState(false);
   const [derivedTeams, setDerivedTeams] = useState<string[]>([]);
   const [fieldLocked, setFieldLocked] = useState(false);
+  const [pickMode, setPickMode] = useState<"manual" | "matchups">("manual");
+  const [slate, setSlate] = useState({ picked: 0, total: 0 });
   const [meta, setMeta] = useState({ name: "", league: "", season: 0 });
   const [shareOpen, setShareOpen] = useState(false);
+
+  const applyState = useCallback((d: any) => {
+    if (d.picks) setPicks(d.picks);
+    setDerivedTeams(d.derivedTeams || []);
+    setFieldLocked(!!d.fieldLocked);
+    if (d.pickMode) setPickMode(d.pickMode === "matchups" ? "matchups" : "manual");
+    if (d.slate) setSlate({ picked: d.slate.picked ?? 0, total: d.slate.total ?? 0 });
+  }, []);
 
   useEffect(() => {
     fetch("/api/predictions")
       .then((r) => r.json())
       .then((d) => {
-        if (d.picks) setPicks(d.picks);
         setLocked(!!d.locked);
         setDeadline(!!d.deadlinePassed);
-        setDerivedTeams(d.derivedTeams || []);
-        setFieldLocked(!!d.fieldLocked);
+        applyState(d);
         setMeta({ name: d.displayName || "", league: d.league || "", season: d.season || 0 });
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [applyState]);
 
   const editable = !locked && !deadlinePassed;
-  // Once every matchup is picked, records drive the division winners and
-  // wildcards — the manual pick controls for those steps are disabled.
-  const fieldEditable = editable && !fieldLocked;
+  // The field is hand-editable only on the manual track. On the matchups track
+  // it's derived from the game slate, so the Step 1–2 controls are always off.
+  const fieldEditable = editable && pickMode === "manual";
+  // Matchups track but the slate isn't fully called yet: no valid field exists.
+  const slateIncomplete = pickMode === "matchups" && !fieldLocked;
 
   const persistPicks = useCallback(async (next: SeasonPicks) => {
     setSaving(true);
@@ -78,14 +88,10 @@ export default function PredictionScreen() {
     }).catch(() => null);
     if (res && res.ok) {
       const d = await res.json().catch(() => null);
-      if (d?.picks) {
-        setPicks(d.picks);
-        setDerivedTeams(d.derivedTeams || []);
-        setFieldLocked(!!d.fieldLocked);
-      }
+      if (d?.picks) applyState(d);
     }
     setSaving(false);
-  }, []);
+  }, [applyState]);
 
   const persistBracket = useCallback(async (next: SeasonPicks) => {
     setSaving(true);
@@ -96,6 +102,28 @@ export default function PredictionScreen() {
     }).catch(() => {});
     setSaving(false);
   }, []);
+
+  const changeMode = useCallback(
+    async (mode: "manual" | "matchups") => {
+      const confirmMsg =
+        mode === "matchups"
+          ? "Switch to “Call every game”? Your hand-picked division winners, wild cards, and seeds will be cleared and rebuilt from your game picks — you’ll need to call your whole slate in Matchups to complete the bracket. Your weekly pool picks are kept."
+          : "Switch to “Build by hand”? You’ll pick your division winners, wild cards, and seeds yourself. Your game picks stay in the Matchups pool but won’t drive your bracket.";
+      if (!window.confirm(confirmMsg)) return;
+      setSaving(true);
+      const res = await fetch("/api/predictions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "setMode", mode }),
+      }).catch(() => null);
+      if (res && res.ok) {
+        const d = await res.json().catch(() => null);
+        if (d) applyState(d);
+      }
+      setSaving(false);
+    },
+    [applyState],
+  );
 
   function setWins(teamId: string, wins: number) {
     if (!editable) return;
@@ -204,22 +232,32 @@ export default function PredictionScreen() {
         <ShareSheet picks={picks} name={meta.name} league={meta.league} season={meta.season} onClose={() => setShareOpen(false)} />
       )}
 
-      {/* Records now drive the field — manual division/wildcard picks are off. */}
-      {fieldLocked && (
+      {/* Track chooser — build the bracket by hand, or derive it from the slate. */}
+      <TrackToggle mode={pickMode} onChange={changeMode} disabled={!editable} />
+
+      {pickMode === "matchups" && fieldLocked && (
         <div className="card elev-sm" style={{ padding: "10px 12px", marginBottom: 16, borderColor: "var(--color-accent)" }}>
           <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            You&apos;ve picked every matchup, so your records now set your division winners and wild cards
-            automatically. Editing them by hand is off — change a game in{" "}
+            Your whole slate is called, so your division winners, wild cards, and seeds are set by those
+            records automatically. To reshape your field, change a game in{" "}
             <Link href="/weekly" style={{ color: "var(--color-accent)" }}>
               Matchups
-            </Link>{" "}
-            to reshape your field.
+            </Link>
+            .
           </div>
         </div>
       )}
 
+      {slateIncomplete ? (
+        <SlateProgress picked={slate.picked} total={slate.total} />
+      ) : (
+        <>
       {/* ── Step 1 · Division winners ─────────────────────────────────── */}
-      <SectionLabel n={1} title="Division winners" hint="Pick one winner in each division." />
+      <SectionLabel
+        n={1}
+        title="Division winners"
+        hint={pickMode === "matchups" ? "Set from your called slate." : "Pick one winner in each division."}
+      />
       {DIVISIONS.map((d) => (
         <div key={d.key} style={{ marginBottom: 16 }}>
           <div style={{ ...kicker, marginBottom: 8 }}>{d.key}</div>
@@ -238,7 +276,12 @@ export default function PredictionScreen() {
       ))}
 
       {/* ── Step 2 · Wildcards ────────────────────────────────────────── */}
-      <SectionLabel n={2} title="Wildcards" hint="Pick 3 wildcard teams per conference." top={20} />
+      <SectionLabel
+        n={2}
+        title="Wildcards"
+        hint={pickMode === "matchups" ? "Set from your called slate." : "Pick 3 wildcard teams per conference."}
+        top={20}
+      />
       {(["AFC", "NFC"] as Conference[]).map((conf) => {
         const wv = wildcardView(conf);
         return (
@@ -275,7 +318,11 @@ export default function PredictionScreen() {
           <SectionLabel
             n={3}
             title="Seeding"
-            hint="Set each team’s record to seed your bracket. Best way: call their whole slate in Matchups — a completed slate seeds them automatically. Or set a quick win total."
+            hint={
+              pickMode === "matchups"
+                ? "Seeded from your called slate — division winners 1–4 by wins, wild cards 5–7."
+                : "Set each team’s win total to seed your bracket — division winners 1–4 by wins, wild cards 5–7."
+            }
             top={24}
           />
           {(["AFC", "NFC"] as Conference[]).map((conf) => (
@@ -312,6 +359,8 @@ export default function PredictionScreen() {
           </div>
         </div>
       )}
+        </>
+      )}
 
       {/* Lock / edit CTAs */}
       <div className="cta-narrow">
@@ -329,6 +378,10 @@ export default function PredictionScreen() {
               Edit picks
             </button>
           </div>
+        ) : slateIncomplete ? (
+          <button type="button" className="btn btn-primary btn-block" disabled style={{ marginTop: 8 }}>
+            Call every game to lock · {slate.picked}/{slate.total}
+          </button>
         ) : (
           <button type="button" className="btn btn-primary btn-block" disabled={!lockable} onClick={doLock} style={{ marginTop: 8 }}>
             Lock in picks · {made}/{TOTAL_SEASON_PICKS}
@@ -371,6 +424,84 @@ function SectionLabel({ n, title, hint, top = 0 }: { n: number; title: string; h
   );
 }
 
+// Segmented control choosing how the bracket field is built. Two exclusive
+// tracks; switching is confirmed by the parent (weekly pool picks are kept).
+function TrackToggle({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: "manual" | "matchups";
+  onChange: (mode: "manual" | "matchups") => void;
+  disabled?: boolean;
+}) {
+  const opts: { id: "manual" | "matchups"; label: string; sub: string }[] = [
+    { id: "manual", label: "Build by hand", sub: "Pick teams & seeds" },
+    { id: "matchups", label: "Call every game", sub: "Derive from your slate" },
+  ];
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        {opts.map((o) => {
+          const active = mode === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              disabled={disabled || active}
+              onClick={() => onChange(o.id)}
+              style={{
+                flex: 1,
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: "var(--radius-md)",
+                border: active ? "1.5px solid var(--color-accent)" : "1px solid var(--color-divider)",
+                background: active ? "color-mix(in srgb, var(--color-accent) 12%, transparent)" : "var(--color-bg)",
+                color: "var(--color-text)",
+                cursor: disabled || active ? "default" : "pointer",
+                opacity: disabled && !active ? 0.5 : 1,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                {active && <span style={{ color: "var(--color-accent)" }}>✓</span>}
+                {o.label}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{o.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Matchups track, slate not yet fully called: there's no valid field to show,
+// so nudge the user to finish calling games.
+function SlateProgress({ picked, total }: { picked: number; total: number }) {
+  const pct = total > 0 ? Math.round((picked / total) * 100) : 0;
+  return (
+    <div className="card elev-sm" style={{ padding: 18, marginTop: 4 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Call every game to build your bracket</div>
+      <p style={{ fontSize: 12.5, opacity: 0.7, lineHeight: 1.5, margin: "0 0 12px" }}>
+        On this track your division winners, wild cards, and seeds are derived from your game picks — so your
+        whole slate has to be called before the bracket exists. Pick the rest in{" "}
+        <Link href="/weekly" style={{ color: "var(--color-accent)" }}>
+          Matchups
+        </Link>
+        .
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, height: 8, borderRadius: 999, background: "var(--color-divider)", overflow: "hidden" }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: "var(--color-accent)" }} />
+        </div>
+        <span style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", opacity: 0.8, flex: "none" }}>
+          {picked}/{total}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function SeedRow({
   seed,
   teamId,
@@ -407,13 +538,7 @@ function SeedRow({
           </span>
         ) : (
           <>
-            <Link
-              href={`/weekly?team=${teamId}`}
-              style={{ fontSize: 12, color: "var(--color-accent)", display: "inline-flex", alignItems: "center", gap: 2, textDecoration: "none" }}
-            >
-              Pick all games <ChevronRight size={12} />
-            </Link>
-            <span style={{ fontSize: 11, opacity: 0.4 }}>or</span>
+            <span style={{ fontSize: 11, opacity: 0.5 }}>Win total</span>
             <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
               <button
                 type="button"

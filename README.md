@@ -20,20 +20,20 @@ League).
 - **Matchups** — call games two ways: **by team** (default — pick W/L down a
   single team's whole schedule) or **by week** (game by game). Games lock at
   kickoff, and correct picks score a point.
-- **One guided Bracket flow** — division winners → wild cards → seeding → the
-  playoff bracket, all on one page. Pick one winner per division and 3 wild cards
-  per conference (14 picks total; division winners are excluded from the wild-card
-  pool automatically), then advance teams through the Wild Card → Divisional →
-  Conference Championship → Super Bowl. Everything stays editable until you lock
-  it in or the deadline passes.
-- **Intertwined & smart** — a fully picked weekly slate sets that team's
-  projected record automatically, overriding the manual seeding. Don't want to
-  call every game? Set win totals by hand on the Bracket page instead. And it's
-  all-or-nothing: once you've picked *every* matchup, your records become the
-  single source of truth — division winners and wild cards are derived from them
-  automatically and the manual pick controls switch off, so the two can never
-  contradict each other. Until the matchups are fully done, your hand-picked
-  field stands exactly as you set it.
+- **Two ways to build your bracket** — pick a track on the Bracket page:
+  - **Build by hand** (default) — pick one winner per division and 3 wild cards
+    per conference (14 picks; division winners are excluded from the wild-card
+    pool automatically), set win totals to seed them, then advance teams through
+    the Wild Card → Divisional → Conference Championship → Super Bowl.
+  - **Call every game** — skip hand-picking; your division winners, wild cards,
+    and seeds are *derived* from your game picks. You call the whole season in
+    Matchups and the bracket falls out of the standings. It can't be locked until
+    the full slate is called (a progress bar tracks how far you are).
+
+  The two tracks are exclusive — records and hand-picks never blend, so they
+  can't contradict each other. Switching tracks is a deliberate reset of the
+  bracket; your weekly pool picks are always kept. Everything stays editable
+  until you lock in or the deadline passes.
 - **Leaderboard** — everyone ranked by points, updated as results come in.
 - **Live NFL data** — schedule, scores, standings, and playoff results come from
   ESPN's public API.
@@ -148,30 +148,31 @@ prisma/schema.prisma  data model
 
 ## Seeding
 
-After all 14 teams are chosen, a **Seeding** section lets each player set every
-playoff team's projected win total. Seeds are then computed like the real NFL:
-division winners take seeds 1–4 (ordered by wins), wild cards take 5–7 (ordered
-by wins) — a wild card never outseeds a division winner, even with a better
-record. Ties fall back to a deterministic order, so seeding is never random.
-Those seeds drive every bracket matchup (byes, reseeding, etc.).
+Seeds are computed like the real NFL: division winners take seeds 1–4 (ordered
+by wins), wild cards take 5–7 (ordered by wins) — a wild card never outseeds a
+division winner, even with a better record. Ties fall back to a deterministic
+order, so seeding is never random. Those seeds drive every bracket matchup
+(byes, reseeding, etc.).
 
-**Matchups feed the seeding.** If you've picked a winner for every game on a
-team's schedule (easy in the Matchups tab's *by team* mode), that team's record
-is derived from those picks and overrides the manual total — its Seeding row
-shows a **Slate set** badge and is read-only. This all runs server-side in
-`src/lib/sync.ts` and is persisted, so scoring, the leaderboard, and the bracket
-all read the reconciled picks. Reconciliation only happens while your picks are
-still editable; once you lock in (or the deadline passes) predictions are frozen.
+**Two exclusive tracks (`pickMode` on the season entry).** How the bracket
+*field* is built is a per-entry choice, and the two never blend — which is what
+kept manual picks and derived records from contradicting each other:
 
-**Records drive the field — all or nothing.** Once *every* matchup is picked
-(all 32 teams' slates complete), records become the single source of truth:
-`deriveField` in `src/lib/sync.ts` computes each division's winner (its best
-team by wins) and each conference's wild cards (the best three remaining), and
-the Division-winner / Wild-card pick controls switch off so a manual choice
-can't contradict the records. Record ties fall back to your prior manual pick,
-then to a deterministic team order. Until the matchups are fully done, records
-never reshape the field — your hand-picked division winners and wild cards stand
-exactly as you set them.
+- **`manual`** (default) — you hand-pick the 14 teams and set each one's win
+  total in the **Seeding** section. Weekly game picks never touch the bracket.
+- **`matchups`** — the whole field is *derived*. Once **every** game is called,
+  `deriveField` in `src/lib/sync.ts` computes each division's winner (its best
+  team by wins) and each conference's wild cards (the best three remaining);
+  seeds follow from the same records. Until the slate is complete there is no
+  field yet, so the bracket can't be locked (the page shows a progress bar).
+  Record ties fall back to a deterministic team order.
+
+All of this runs server-side in `syncEntry` (`src/lib/sync.ts`) and is persisted,
+so scoring, the leaderboard, and the Divisions view all read the effective
+picks. It only runs while your picks are still editable; once you lock in (or the
+deadline passes) predictions are frozen. Switching tracks clears the bracket
+field (a deliberate reset) but always keeps your weekly straight-up pool picks,
+which are scored independently regardless of track.
 
 ## Next steps
 

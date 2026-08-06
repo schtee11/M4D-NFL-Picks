@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { getEntry, parseEntry } from "@/lib/picks";
-import { SEASON } from "@/lib/config";
+import { syncEntry } from "@/lib/sync";
+import { SEASON, deadlinePassed } from "@/lib/config";
 import { CONFERENCES, DIVISIONS, teamName, type Conference } from "@/lib/teams";
-import { getSeeds, projectedWins, picksMade, REGULAR_SEASON_GAMES } from "@/lib/bracket";
+import { emptyPicks, getSeeds, projectedWins, picksMade, REGULAR_SEASON_GAMES } from "@/lib/bracket";
 import { TeamLogo } from "@/components/TeamLogo";
 import { ChevronRight } from "@/components/icons";
 
@@ -20,8 +20,9 @@ interface Row {
 
 export default async function TeamsPage() {
   const user = await getCurrentUser();
-  const entry = user ? await getEntry(user.id) : null;
-  const picks = parseEntry(entry);
+  // Use the effective (track-aware) picks so a matchups-track field shows the
+  // same derived winners/wildcards as the bracket page.
+  const picks = user ? (await syncEntry(user.id, deadlinePassed())).picks : emptyPicks();
   const hasPicks = picksMade(picks) > 0;
 
   // Seed each team from the user's own bracket (division winners 1-4, wild

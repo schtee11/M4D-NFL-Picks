@@ -39,6 +39,11 @@ model SeasonEntry {
   records       String @default("{}")
   // JSON: { "AFC_wc0": "BUF", ..., "SB": "KC" } — up to 13 entries.
   bracketPicks  String @default("{}")
+  // How the bracket FIELD is built: "manual" (hand-pick division winners,
+  // wildcards, and seed win totals) or "matchups" (derive the whole field from
+  // a fully-called game slate). Two exclusive tracks — never blended. The
+  // weekly straight-up pool is unaffected either way.
+  pickMode      String  @default("manual")
   locked        Boolean  @default(false)
   lockedAt      DateTime?
   updatedAt     DateTime @updatedAt

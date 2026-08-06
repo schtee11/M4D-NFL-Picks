@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getOrCreateEntry, parseEntry, savePicks, saveBracket, setLocked } from "@/lib/picks";
+import {
+  getOrCreateEntry,
+  parseEntry,
+  parsePickMode,
+  savePicks,
+  savePickMode,
+  saveBracket,
+  setLocked,
+  PickMode,
+} from "@/lib/picks";
 import { canLock } from "@/lib/bracket";
 import { syncEntry } from "@/lib/sync";
 import { deadlinePassed, LEAGUE_NAME, SEASON } from "@/lib/config";
@@ -10,18 +19,18 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const entry = await getOrCreateEntry(user.id);
-  // Only the deadline truly freezes predictions — "locked" is a soft state the
-  // user can toggle any time before then. So keep pulling weekly picks into the
-  // seeding (override manual W/L for completed slates) and auto-swapping
-  // out-of-order division winners even while locked; stop only past the deadline.
+  // syncEntry also freezes on entry.locked, so a matchups field can't drift from
+  // later weekly-pick edits once the user has locked in.
   const sync = await syncEntry(user.id, deadlinePassed(), entry);
   return NextResponse.json({
     picks: sync.picks,
     locked: entry.locked,
     canLock: canLock(sync.picks),
     deadlinePassed: deadlinePassed(),
+    pickMode: sync.pickMode,
     derivedTeams: sync.derivedTeams,
     fieldLocked: sync.fieldLocked,
+    slate: sync.slate,
     // Labels for the share overview.
     displayName: user.displayName,
     league: LEAGUE_NAME,
@@ -30,7 +39,7 @@ export async function GET() {
 }
 
 // POST /api/predictions  { op, payload }
-//   op: "savePicks" | "saveBracket" | "lock" | "unlock"
+//   op: "savePicks" | "saveBracket" | "setMode" | "lock" | "unlock"
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,6 +60,14 @@ export async function POST(req: Request) {
         if (entry.locked || frozen) {
           return NextResponse.json({ error: "Picks are locked." }, { status: 409 });
         }
+        // The field is hand-editable only on the manual track. On the matchups
+        // track it's derived from the slate, so reject manual edits outright.
+        if (parsePickMode(entry) === "matchups") {
+          return NextResponse.json(
+            { error: "Your bracket is set by your matchups." },
+            { status: 409 },
+          );
+        }
         const divisionPicks = (body.divisionPicks || {}) as Record<string, string>;
         const wc = (body.wildcards || { AFC: [], NFC: [] }) as Record<Conference, string[]>;
         // Enforce max 3 wildcards per conference and no overlap with division winners.
@@ -65,14 +82,31 @@ export async function POST(req: Request) {
           if (Number.isFinite(n)) records[team] = Math.min(17, Math.max(0, n));
         }
         await savePicks(user.id, divisionPicks, wildcards, records);
-        // Re-derive from weekly picks and auto-swap before returning, so the UI
-        // gets the reconciled truth rather than the raw submission.
         const sync = await syncEntry(user.id, false);
         return NextResponse.json({
           ok: true,
           picks: sync.picks,
+          pickMode: sync.pickMode,
           derivedTeams: sync.derivedTeams,
           fieldLocked: sync.fieldLocked,
+          slate: sync.slate,
+        });
+      }
+      case "setMode": {
+        if (entry.locked || frozen) {
+          return NextResponse.json({ error: "Picks are locked." }, { status: 409 });
+        }
+        const mode: PickMode = body.mode === "matchups" ? "matchups" : "manual";
+        await savePickMode(user.id, mode);
+        const sync = await syncEntry(user.id, false);
+        return NextResponse.json({
+          ok: true,
+          picks: sync.picks,
+          pickMode: sync.pickMode,
+          canLock: canLock(sync.picks),
+          derivedTeams: sync.derivedTeams,
+          fieldLocked: sync.fieldLocked,
+          slate: sync.slate,
         });
       }
       case "saveBracket": {

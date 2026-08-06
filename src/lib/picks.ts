@@ -7,6 +7,15 @@ import { Conference } from "./teams";
 import { SEASON } from "./config";
 import type { SeasonEntry } from "@prisma/client";
 
+// Which input drives the bracket field. "manual": hand-picked division winners,
+// wildcards, and seed win totals. "matchups": the whole field is derived from a
+// fully-called game slate. The two never blend.
+export type PickMode = "manual" | "matchups";
+
+export function parsePickMode(entry: SeasonEntry | null): PickMode {
+  return entry?.pickMode === "matchups" ? "matchups" : "manual";
+}
+
 export function parseEntry(entry: SeasonEntry | null): SeasonPicks {
   if (!entry) return emptyPicks();
   try {
@@ -47,6 +56,18 @@ export async function savePicks(
       wildcards: JSON.stringify(wildcards),
       records: JSON.stringify(records),
     },
+  });
+}
+
+export async function savePickMode(
+  userId: string,
+  mode: PickMode,
+  season = SEASON,
+): Promise<SeasonEntry> {
+  await getOrCreateEntry(userId, season);
+  return prisma.seasonEntry.update({
+    where: { userId_season: { userId, season } },
+    data: { pickMode: mode },
   });
 }
 

@@ -1,30 +1,28 @@
-// Keeps the season predictions "intertwined" with the weekly straight-up picks.
+// Builds a season entry's effective picks according to its track (pickMode).
 //
-// Two behaviors live here:
+// The bracket field can be built one of two mutually-exclusive ways — never a
+// blend of both, which is where record-vs-manual contradictions used to breed:
 //
-//  1. Weekly picks override the manual W/L. Once a user has picked a winner for
-//     every one of a team's regular-season games, that team's projected win
-//     total is derived from those picks — overriding whatever number was set by
-//     hand in the seeding step. Teams with an incomplete slate keep their
-//     manual projection.
+//  • "manual"  — the user hand-picks division winners, wildcards, and seed win
+//                totals. Weekly game picks never touch the bracket (they still
+//                play in the always-on straight-up pool, scored separately).
 //
-//  2. Records drive the playoff field — but only all-or-nothing. Once EVERY
-//     team's matchup slate is picked, the records are the sole source of truth:
-//     each division's winner is its best team by wins and each conference's
-//     wildcards are the best three remaining, derived automatically. Until the
-//     matchups are fully done, the field is left exactly as the user picked it
-//     by hand — partial records never reshape it. (The UI disables the manual
-//     division/wildcard controls once the field is record-driven, so the two
-//     inputs can't contradict each other.)
+//  • "matchups" — the user calls the whole game slate and the entire field is
+//                DERIVED from the resulting records: each division's winner is
+//                its best team by wins, each conference's wildcards the best
+//                three remaining (see deriveField). This only happens once
+//                EVERY game is picked; until then there is no valid field yet
+//                and the bracket can't be locked. The manual field controls are
+//                off in this track, so records and hand-picks can never disagree.
 //
 // Everything is gated to editable (non-frozen) entries and persists the result,
-// so scoring, the leaderboard, and the bracket all read the reconciled picks.
+// so scoring, the leaderboard, and the bracket all read the effective picks.
 
 import { prisma } from "./db";
 import { SEASON } from "./config";
 import { getSeasonSchedule, Game } from "./espn";
-import { getEntry, parseEntry } from "./picks";
-import { SeasonPicks } from "./bracket";
+import { getEntry, parseEntry, parsePickMode, PickMode } from "./picks";
+import { SeasonPicks, canLock } from "./bracket";
 import { Conference, CONFERENCES, DIVISIONS } from "./teams";
 import type { SeasonEntry } from "@prisma/client";
 
@@ -68,6 +66,8 @@ export interface WeeklyDerived {
   wins: Record<string, number>; // team -> games the user picked them to win
   complete: Set<string>; // teams whose entire schedule the user has picked
   allComplete: boolean; // every scheduled team's slate is picked — matchups fully done
+  pickedGames: number; // scheduled games the user has called
+  totalGames: number; // scheduled games in the season
 }
 
 // Build each team's picked-win total from the user's weekly picks and mark the
@@ -87,9 +87,11 @@ export async function getWeeklyDerived(userId: string, season = SEASON): Promise
   const gameById = new Map(schedule.map((g) => [g.id, g]));
   const wins: Record<string, number> = {};
   const pickedByTeam: Record<string, number> = {};
+  let pickedGames = 0;
   for (const p of picks) {
     const g = gameById.get(p.gameId);
     if (!g) continue; // pick for a game not on the known schedule
+    pickedGames += 1;
     wins[p.pickedTeam] = (wins[p.pickedTeam] ?? 0) + 1;
     // A pick decides the game for BOTH participants (one win, one loss).
     if (g.home.abbr) pickedByTeam[g.home.abbr] = (pickedByTeam[g.home.abbr] ?? 0) + 1;
@@ -104,7 +106,7 @@ export async function getWeeklyDerived(userId: string, season = SEASON): Promise
   // done and records become the sole driver of the playoff field.
   const scheduledTeams = Object.keys(totalByTeam);
   const allComplete = scheduledTeams.length > 0 && scheduledTeams.every((t) => complete.has(t));
-  return { wins, complete, allComplete };
+  return { wins, complete, allComplete, pickedGames, totalGames: schedule.length };
 }
 
 // Manual projections with weekly-derived totals overlaid for any team whose
@@ -157,15 +159,19 @@ export function deriveField(
 }
 
 export interface SyncResult {
-  picks: SeasonPicks; // effective picks: records overlaid, field derived when locked
-  derivedTeams: string[]; // teams whose wins now come from a completed weekly slate
-  fieldLocked: boolean; // matchups fully done → division/wildcard picks are record-driven
+  picks: SeasonPicks; // effective picks: field derived from records in matchups mode
+  derivedTeams: string[]; // teams whose wins come from a completed slate (matchups mode)
+  pickMode: PickMode; // which track this entry is on
+  fieldLocked: boolean; // matchups mode + slate complete → field is record-driven & read-only
+  slate: { picked: number; total: number }; // weekly-slate progress (drives the "finish" nudge)
 }
 
-// Load an entry, apply the weekly record override, and — once the matchups are
-// fully done — derive the playoff field from those records. Persists any change
-// and returns the effective picks. A frozen (locked or past-deadline) entry is
-// left untouched: predictions are final once locked in.
+// Load an entry and produce its effective picks for the current track:
+//   • manual   — the hand-picked field and manual win totals stand untouched;
+//                weekly picks never feed the bracket.
+//   • matchups — records come from the weekly slate, and once EVERY game is
+//                called the whole field is derived from them (read-only).
+// Persists any change. A frozen (locked or past-deadline) entry is left as-is.
 export async function syncEntry(
   userId: string,
   frozen: boolean,
@@ -174,15 +180,36 @@ export async function syncEntry(
 ): Promise<SyncResult> {
   const row = entry ?? (await getEntry(userId, season));
   const base = parseEntry(row);
-  if (!row || frozen) return { picks: base, derivedTeams: [], fieldLocked: false };
+  const mode = parsePickMode(row);
+  // A locked entry is frozen just like a past-deadline one: the field must not
+  // keep re-deriving from later weekly-pick edits, or "locked" wouldn't hold.
+  // A matchups field that's complete stays flagged read-only so the UI shows the
+  // finished bracket rather than the "call your slate" progress state.
+  if (!row || frozen || row.locked) {
+    const fieldLocked = mode === "matchups" && canLock(base);
+    return { picks: base, derivedTeams: [], pickMode: mode, fieldLocked, slate: { picked: 0, total: 0 } };
+  }
 
+  // Manual track: the bracket is entirely hand-built — no weekly derivation.
+  if (mode === "manual") {
+    return {
+      picks: base,
+      derivedTeams: [],
+      pickMode: mode,
+      fieldLocked: false,
+      slate: { picked: 0, total: 0 },
+    };
+  }
+
+  // Matchups track: records come from the slate; the field is derived only when
+  // every game is called. Until then the field is EMPTY — so a hand-picked field
+  // from a previous track (or a since-invalidated one) can never linger or be
+  // locked in.
   const derived = await getWeeklyDerived(userId, season);
   const records = effectiveRecords(base, derived);
 
-  // The field is record-driven ONLY when every matchup is picked. Until then the
-  // user's hand-picked division winners and wildcards stand untouched.
-  let divisionPicks = base.divisionPicks;
-  let wildcards = base.wildcards;
+  let divisionPicks: Record<string, string> = {};
+  let wildcards: Record<Conference, string[]> = { AFC: [], NFC: [] };
   if (derived.allComplete) {
     const field = deriveField(records, base.divisionPicks, base.wildcards);
     divisionPicks = field.divisionPicks;
@@ -208,6 +235,8 @@ export async function syncEntry(
   return {
     picks: { divisionPicks, wildcards, bracketPicks: base.bracketPicks, records },
     derivedTeams: [...derived.complete],
+    pickMode: mode,
     fieldLocked: derived.allComplete,
+    slate: { picked: derived.pickedGames, total: derived.totalGames },
   };
 }
