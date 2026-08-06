@@ -380,3 +380,116 @@ export async function getPlayoffResults(season: number): Promise<PlayoffResults>
     superBowlChampion: sbGames[0]?.winner ?? null,
   };
 }
+
+// Every team that reached the postseason, from the Wild Card and Divisional
+// scoreboards. Their union is all 14 playoff teams (the two first-round byes
+// appear in the Divisional round). Empty until a postseason exists.
+export async function getPlayoffParticipants(season: number): Promise<Set<string>> {
+  const [wc, div] = await Promise.all([
+    getScoreboard(season, 1, 3),
+    getScoreboard(season, 2, 3),
+  ]);
+  const set = new Set<string>();
+  for (const g of [...wc, ...div]) {
+    if (g.home.abbr) set.add(g.home.abbr);
+    if (g.away.abbr) set.add(g.away.abbr);
+  }
+  return set;
+}
+
+// Exact conference playoff seeds (1-7) per team, from the standings CDN. That
+// host isn't always reachable from a datacenter, so this is best-effort: an
+// empty map just means we render without seed numbers.
+async function getSeedMap(season: number): Promise<Map<string, number>> {
+  const cdn = await getDivisionStandings(season);
+  const m = new Map<string, number>();
+  if (cdn) for (const d of cdn) for (const t of d.teams) if (t.seed != null) m.set(t.abbr, t.seed);
+  return m;
+}
+
+function comparePlayoff(a: DivisionTeamRecord, b: DivisionTeamRecord): number {
+  const sa = a.seed ?? 99;
+  const sb = b.seed ?? 99;
+  if (sa !== sb) return sa - sb;
+  if (b.pct !== a.pct) return b.pct - a.pct;
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  return a.abbr.localeCompare(b.abbr);
+}
+
+// Division standings built primarily from the regular-season schedule (records)
+// and the postseason bracket (who made the playoffs) — both served by the
+// datacenter-reachable host — with exact seeds overlaid from the standings CDN
+// when it's reachable. This returns real data even where getDivisionStandings
+// (CDN-only) comes back empty. Returns null when the season has no data yet.
+export async function getDivisionStandingsFull(season: number): Promise<DivisionStanding[] | null> {
+  const [games, participants, seedMap] = await Promise.all([
+    getSeasonSchedule(season),
+    getPlayoffParticipants(season),
+    getSeedMap(season),
+  ]);
+
+  const rec = new Map<string, { w: number; l: number; t: number }>();
+  const bump = (abbr: string, k: "w" | "l" | "t") => {
+    const r = rec.get(abbr) ?? { w: 0, l: 0, t: 0 };
+    r[k] += 1;
+    rec.set(abbr, r);
+  };
+  let anyComplete = false;
+  for (const g of games) {
+    if (g.state !== "post" || !g.home.abbr || !g.away.abbr) continue;
+    anyComplete = true;
+    if (g.winner === g.home.abbr) {
+      bump(g.home.abbr, "w");
+      bump(g.away.abbr, "l");
+    } else if (g.winner === g.away.abbr) {
+      bump(g.away.abbr, "w");
+      bump(g.home.abbr, "l");
+    } else if (g.home.score != null && g.away.score != null && g.home.score === g.away.score) {
+      bump(g.home.abbr, "t");
+      bump(g.away.abbr, "t");
+    }
+  }
+
+  // Nothing to show for this season yet.
+  if (!anyComplete && participants.size === 0 && seedMap.size === 0) return null;
+
+  const out: DivisionStanding[] = [];
+  for (const d of DIVISIONS) {
+    const teams: DivisionTeamRecord[] = d.teams.map((abbr) => {
+      const r = rec.get(abbr) ?? { w: 0, l: 0, t: 0 };
+      const played = r.w + r.l + r.t;
+      const seedRaw = seedMap.get(abbr) ?? null;
+      const seed = seedRaw != null && seedRaw >= 1 && seedRaw <= 7 ? seedRaw : null;
+      const inPlayoffs = seed != null || participants.has(abbr);
+      return {
+        abbr,
+        wins: r.w,
+        losses: r.l,
+        ties: r.t,
+        pct: played > 0 ? (r.w + r.t * 0.5) / played : 0,
+        seed,
+        status: inPlayoffs ? "wildcard" : "out",
+        clinch: null,
+      };
+    });
+
+    // Every division has exactly one division winner among its teams (seeds
+    // 1-4). It's the best-seeded — or, without seeds, the best-record — playoff
+    // team in the division; the rest of the division's playoff teams are wild
+    // cards.
+    const inTeams = teams.filter((t) => t.status !== "out").sort(comparePlayoff);
+    const winner = inTeams[0];
+    if (winner && (winner.seed == null || winner.seed <= 4)) {
+      teams.find((t) => t.abbr === winner.abbr)!.status = "division";
+    }
+
+    teams.sort((a, b) => {
+      const rank = (s: DivisionTeamRecord["status"]) =>
+        s === "division" ? 0 : s === "wildcard" ? 1 : 2;
+      if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+      return comparePlayoff(a, b);
+    });
+    out.push({ key: d.key, conf: d.conf, teams });
+  }
+  return out;
+}

@@ -1,53 +1,81 @@
-import { getDivisionRecords } from "@/lib/results";
+import { getDivisionsView } from "@/lib/results";
 import { SEASON } from "@/lib/config";
-import { CONFERENCES, teamName, type Conference } from "@/lib/teams";
+import { CONFERENCES, DIVISIONS, teamName, type Conference } from "@/lib/teams";
 import { TeamLogo } from "@/components/TeamLogo";
 import type { DivisionStanding, DivisionTeamRecord } from "@/lib/espn";
 
 export const dynamic = "force-dynamic";
 
-export default async function TeamsPage() {
-  const standings = await getDivisionRecords();
+// Build the full 8-division / 32-team layout from static reference data, then
+// overlay whatever records + seeds ESPN gave us. This way the page always shows
+// every team by division even when live standings aren't available.
+function buildModel(divisions: DivisionStanding[] | null): DivisionStanding[] {
+  const byKey = new Map((divisions ?? []).map((d) => [d.key, d]));
+  return DIVISIONS.map(
+    (d) =>
+      byKey.get(d.key) ?? {
+        key: d.key,
+        conf: d.conf,
+        teams: d.teams.map(
+          (abbr): DivisionTeamRecord => ({
+            abbr,
+            wins: 0,
+            losses: 0,
+            ties: 0,
+            pct: 0,
+            seed: null,
+            status: "out",
+            clinch: null,
+          }),
+        ),
+      },
+  );
+}
 
-  const started =
-    !!standings &&
-    standings.some((d) => d.teams.some((t) => t.wins + t.losses + t.ties > 0));
+export default async function TeamsPage() {
+  const view = await getDivisionsView();
+  const model = buildModel(view.divisions);
+  const showSeeds = view.live;
 
   return (
     <div className="narrow">
       <h4 style={{ margin: "0 0 2px" }}>Divisions</h4>
       <p style={{ opacity: 0.6, fontSize: 13, margin: "0 0 14px" }}>
-        {SEASON} standings · the top 7 in each conference make the playoffs
+        {view.isFallback
+          ? `Final ${view.season} standings · the top 7 in each conference made the playoffs`
+          : `${view.season} standings · the top 7 in each conference make the playoffs`}
       </p>
+
+      {view.isFallback && (
+        <div
+          className="card elev-sm"
+          style={{ padding: 14, marginBottom: 12, fontSize: 12.5, opacity: 0.8 }}
+        >
+          The {SEASON} season hasn&apos;t kicked off yet — showing last season&apos;s final
+          results. This page switches to live {SEASON} standings once games are played.
+        </div>
+      )}
+
+      {!view.isFallback && !view.live && (
+        <div
+          className="card elev-sm"
+          style={{ padding: 14, marginBottom: 12, fontSize: 12.5, opacity: 0.8 }}
+        >
+          Live standings aren&apos;t available right now. Every team is listed below by division;
+          records and the playoff picture will fill in once the season starts.
+        </div>
+      )}
 
       <Legend />
 
-      {!standings && (
-        <div className="card elev-sm" style={{ padding: 18, textAlign: "center", marginTop: 12 }}>
-          <div style={{ fontSize: 13, opacity: 0.7 }}>Standings aren&apos;t available right now.</div>
-          <div style={{ fontSize: 12, opacity: 0.5, marginTop: 4 }}>Try again in a few minutes.</div>
-        </div>
-      )}
-
-      {standings && !started && (
-        <div
-          className="card elev-sm"
-          style={{ padding: 14, marginTop: 12, marginBottom: 4, fontSize: 12.5, opacity: 0.75 }}
-        >
-          The season hasn&apos;t kicked off yet — records and the playoff picture will fill in
-          once games are played.
-        </div>
-      )}
-
-      {standings &&
-        CONFERENCES.map((conf) => (
-          <ConferenceSection
-            key={conf}
-            conf={conf}
-            divisions={standings.filter((d) => d.conf === conf)}
-            showSeeds={started}
-          />
-        ))}
+      {CONFERENCES.map((conf) => (
+        <ConferenceSection
+          key={conf}
+          conf={conf}
+          divisions={model.filter((d) => d.conf === conf)}
+          showSeeds={showSeeds}
+        />
+      ))}
     </div>
   );
 }
@@ -101,14 +129,7 @@ function ConferenceSection({
   if (!divisions.length) return null;
   return (
     <section style={{ marginTop: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 8,
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
         <h5 style={{ margin: 0 }}>{conf}</h5>
         <span style={{ fontSize: 11.5, opacity: 0.5 }}>7 playoff spots</span>
       </div>
@@ -154,12 +175,23 @@ function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boo
         gap: 9,
         padding: "6px 8px",
         borderRadius: "var(--radius-sm)",
-        background: inPlayoffs ? "color-mix(in srgb, var(--color-accent) 12%, transparent)" : "transparent",
+        background: inPlayoffs
+          ? "color-mix(in srgb, var(--color-accent) 12%, transparent)"
+          : "transparent",
         opacity: showSeeds && team.status === "out" ? 0.5 : 1,
       }}
     >
       <TeamLogo id={team.abbr} size={22} />
-      <span style={{ flex: 1, fontSize: 13.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      <span
+        style={{
+          flex: 1,
+          fontSize: 13.5,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
         {teamName(team.abbr)}
       </span>
       <span
@@ -172,7 +204,7 @@ function TeamRow({ team, showSeeds }: { team: DivisionTeamRecord; showSeeds: boo
       >
         {record}
       </span>
-      {inPlayoffs && team.seed != null ? (
+      {inPlayoffs ? (
         <SeedChip seed={team.seed} status={team.status} />
       ) : (
         <span style={{ width: 20, flex: "none" }} aria-hidden />
@@ -185,7 +217,7 @@ function SeedChip({
   seed,
   status,
 }: {
-  seed: number;
+  seed: number | null;
   status: DivisionTeamRecord["status"];
 }) {
   const isDivision = status === "division";
@@ -207,7 +239,7 @@ function SeedChip({
         border: isDivision ? "none" : "1.5px solid var(--color-accent)",
       }}
     >
-      {seed}
+      {seed ?? (isDivision ? "★" : "•")}
     </span>
   );
 }
