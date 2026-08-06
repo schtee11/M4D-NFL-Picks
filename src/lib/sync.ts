@@ -13,6 +13,12 @@
 //     the chosen winner projects to more wins, it is promoted to division
 //     winner and the former winner drops into that wildcard slot.
 //
+//  3. Wildcard field auto-correction. The wildcards should be the best
+//     non-division-winners in the conference by projected wins. If a team the
+//     user left out out-projects one of the picked wildcards, it takes that
+//     wildcard's slot and the weakest wildcard drops out. This keeps the field
+//     consistent with the records the user's own weekly picks imply.
+//
 // Everything is gated to editable (non-frozen) entries and persists the result,
 // so scoring, the leaderboard, and the bracket all read the reconciled picks.
 
@@ -21,7 +27,7 @@ import { SEASON } from "./config";
 import { getSeasonSchedule, Game } from "./espn";
 import { getEntry, parseEntry } from "./picks";
 import { SeasonPicks } from "./bracket";
-import { Conference, DIVISIONS } from "./teams";
+import { Conference, CONFERENCES, DIVISIONS } from "./teams";
 import type { SeasonEntry } from "@prisma/client";
 
 const SCHEDULE_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours — the schedule rarely moves.
@@ -107,13 +113,24 @@ export function effectiveRecords(picks: SeasonPicks, derived: WeeklyDerived): Re
 }
 
 export interface Swap {
+  kind: "division" | "wildcard";
+  // For a division swap: the division the swap happened in. For a wildcard
+  // swap: the division the promoted (formerly-out) team belongs to.
   division: string;
-  promoted: string; // wildcard promoted to division winner
-  demoted: string; // former division winner, now a wildcard
+  promoted: string; // team moved up (into the division or into the wildcard field)
+  demoted: string; // team moved down (into a wildcard slot, or out of the field)
 }
 
-// Promote a same-division wildcard over the chosen division winner when it
-// projects to strictly more wins. Ties keep the user's pick. Pure function.
+const divisionOf = (t: string) => DIVISIONS.find((d) => d.teams.includes(t))?.key ?? "";
+
+// Reconcile a user's picks with the records their weekly picks imply:
+//   1. Promote a same-division wildcard over the chosen division winner when it
+//      projects to strictly more wins (the former winner drops to a wildcard).
+//   2. Ensure the wildcard field holds the best non-division-winners in the
+//      conference — any left-out team that out-projects a picked wildcard takes
+//      that slot, and the weakest wildcard drops out.
+// Ties always keep the user's pick, so reconciliation never churns on equal
+// records and is deterministic. Pure function.
 export function reconcile(
   divisionPicks: Record<string, string>,
   wildcards: Record<Conference, string[]>,
@@ -127,6 +144,7 @@ export function reconcile(
   const swaps: Swap[] = [];
   const winsOf = (t: string) => (typeof records[t] === "number" ? records[t] : 0);
 
+  // ── 1. Division winner ↔ same-division wildcard ────────────────────────────
   for (const div of DIVISIONS) {
     const winner = dp[div.key];
     if (!winner) continue;
@@ -143,8 +161,46 @@ export function reconcile(
     const idx = wc[conf].indexOf(best);
     wc[conf][idx] = winner; // former winner takes the wildcard slot
     dp[div.key] = best; // wildcard takes the division
-    swaps.push({ division: div.key, promoted: best, demoted: winner });
+    swaps.push({ kind: "division", division: div.key, promoted: best, demoted: winner });
   }
+
+  // ── 2. Wildcard field ↔ left-out teams ─────────────────────────────────────
+  // Runs after step 1 so it sees the reconciled division winners (and any
+  // former winner that dropped into the wildcard field).
+  for (const conf of CONFERENCES) {
+    const confDivs = DIVISIONS.filter((d) => d.conf === conf);
+    const winners = new Set(confDivs.map((d) => dp[d.key]).filter(Boolean));
+    const confTeams = confDivs.flatMap((d) => d.teams);
+
+    // Teams eligible to be a wildcard but currently left out, best record first.
+    // We only ever swap an out team for a *picked* wildcard — never fill an
+    // empty slot — so the user's field size is left untouched.
+    const outPool = () =>
+      confTeams
+        .filter((t) => !winners.has(t) && !wc[conf].includes(t))
+        .sort((a, b) => winsOf(b) - winsOf(a) || confTeams.indexOf(a) - confTeams.indexOf(b));
+
+    // Greedily replace the weakest wildcard with the best out team while it
+    // strictly out-projects it. Each swap strictly raises the total wildcard
+    // wins, which is bounded, so the loop terminates.
+    for (;;) {
+      const pool = outPool();
+      if (!pool.length) break;
+      const bestOut = pool[0];
+      // Weakest current wildcard; on a tie demote the later pick (keeps earlier
+      // picks stickier, matching the tie-goes-to-the-user rule).
+      let worstIdx = -1;
+      for (let i = 0; i < wc[conf].length; i++) {
+        if (worstIdx === -1 || winsOf(wc[conf][i]) <= winsOf(wc[conf][worstIdx])) worstIdx = i;
+      }
+      if (worstIdx === -1) break;
+      const worstWc = wc[conf][worstIdx];
+      if (winsOf(bestOut) <= winsOf(worstWc)) break; // no strict improvement
+      wc[conf][worstIdx] = bestOut;
+      swaps.push({ kind: "wildcard", division: divisionOf(bestOut), promoted: bestOut, demoted: worstWc });
+    }
+  }
+
   return { divisionPicks: dp, wildcards: wc, swaps };
 }
 

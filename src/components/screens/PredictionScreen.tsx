@@ -27,6 +27,7 @@ import { TrophyIcon, ChevronRight, ShareIcon } from "@/components/icons";
 import ShareSheet from "@/components/ShareSheet";
 
 interface Swap {
+  kind: "division" | "wildcard";
   division: string;
   promoted: string;
   demoted: string;
@@ -263,9 +264,18 @@ export default function PredictionScreen() {
         <div className="card elev-sm" style={{ padding: "10px 12px", marginTop: 16, borderColor: "var(--color-accent)" }}>
           <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             {swaps.map((s) => (
-              <div key={s.division}>
-                <strong>{teamName(s.promoted)}</strong> out-won <strong>{teamName(s.demoted)}</strong> in the{" "}
-                {s.division}, so they swapped — {teamName(s.promoted)} is now your division winner.
+              <div key={`${s.kind}:${s.promoted}:${s.demoted}`}>
+                {s.kind === "division" ? (
+                  <>
+                    <strong>{teamName(s.promoted)}</strong> out-won <strong>{teamName(s.demoted)}</strong> in the{" "}
+                    {s.division}, so they swapped — {teamName(s.promoted)} is now your division winner.
+                  </>
+                ) : (
+                  <>
+                    <strong>{teamName(s.promoted)}</strong> out-projected <strong>{teamName(s.demoted)}</strong>, so they
+                    took a wild-card spot — {teamName(s.demoted)} drops out.
+                  </>
+                )}
               </div>
             ))}
           </div>

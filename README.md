@@ -28,9 +28,11 @@ League).
   it in or the deadline passes.
 - **Intertwined & smart** — a fully picked weekly slate sets that team's
   projected record automatically, overriding the manual seeding. Don't want to
-  call every game? Set win totals by hand on the Bracket page instead. And if a
-  wild card you picked ends up with more wins than the division winner in its own
-  division, the app swaps them so your bracket stays consistent.
+  call every game? Set win totals by hand on the Bracket page instead. And the
+  app keeps your field consistent with those records: if a wild card you picked
+  ends up with more wins than the division winner in its own division they swap,
+  and if a team you left out out-projects one of your wild cards it takes that
+  wild-card spot.
 - **Leaderboard** — everyone ranked by points, updated as results come in.
 - **Live NFL data** — schedule, scores, standings, and playoff results come from
   ESPN's public API.
