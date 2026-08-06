@@ -8,6 +8,7 @@ import {
   TrophyIcon,
   PeopleIcon,
   CalendarIcon,
+  GridIcon,
 } from "@/components/icons";
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
     Icon: TrophyIcon,
     match: (p: string) => p.startsWith("/picks") || p.startsWith("/bracket"),
   },
+  { href: "/teams", label: "Divisions", Icon: GridIcon, match: (p: string) => p.startsWith("/teams") },
   { href: "/league", label: "League", Icon: PeopleIcon, match: (p: string) => p.startsWith("/league") },
 ];
 

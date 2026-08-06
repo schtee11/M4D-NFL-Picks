@@ -247,6 +247,114 @@ function matchDivisionName(conf: string, name: string): string | null {
   return DIVISIONS.some((d) => d.key === key) ? key : null;
 }
 
+// ── Full division standings (live playoff picture) ───────────────────────────
+
+export interface DivisionTeamRecord {
+  abbr: string;
+  wins: number;
+  losses: number;
+  ties: number;
+  pct: number; // win percentage, 0..1
+  seed: number | null; // conference playoff seed (1-7) when in a playoff spot
+  status: "division" | "wildcard" | "out";
+  clinch: string | null; // ESPN clinch/elimination note, when present
+}
+
+export interface DivisionStanding {
+  key: string; // "AFC East"
+  conf: Conference;
+  teams: DivisionTeamRecord[]; // ordered: playoff seeds first, then by record
+}
+
+function statValue(stats: any[], name: string): number | null {
+  const s = stats.find((x) => x?.name === name);
+  if (!s) return null;
+  const v = Number(s.value);
+  return Number.isFinite(v) ? v : null;
+}
+
+// Parse ESPN standings into per-division team records with the current playoff
+// picture. Unlike getStandings (which gates scoring and only surfaces the
+// winners/seeds once the season is over), this keeps every team's W-L-T and is
+// safe to show any time — the seeds just reflect where things stand right now.
+// Returns null if the shape can't be understood (e.g. season not started).
+export async function getDivisionStandings(season: number): Promise<DivisionStanding[] | null> {
+  const url = `https://cdn.espn.com/core/nfl/standings?xhr=1&season=${season}`;
+  const json = await getJson(url);
+  const groups: any[] = json?.content?.standings?.groups ?? [];
+  if (!groups.length) return null;
+
+  const byKey = new Map<string, DivisionTeamRecord[]>();
+
+  try {
+    for (const conf of groups) {
+      const confAbbr: Conference = (conf?.abbreviation ?? conf?.name ?? "")
+        .toUpperCase()
+        .includes("AFC")
+        ? "AFC"
+        : "NFC";
+      for (const div of conf?.groups ?? []) {
+        const divName = matchDivisionName(confAbbr, div?.name ?? "");
+        if (!divName) continue;
+        const entries: any[] = div?.standings?.entries ?? [];
+        const teams: DivisionTeamRecord[] = [];
+        for (const e of entries) {
+          const abbr = normalizeAbbr(e?.team?.abbreviation ?? "");
+          if (!abbr) continue;
+          const stats: any[] = e?.stats ?? [];
+          const wins = statValue(stats, "wins") ?? 0;
+          const losses = statValue(stats, "losses") ?? 0;
+          const ties = statValue(stats, "ties") ?? 0;
+          const played = wins + losses + ties;
+          const pctRaw = statValue(stats, "winPercent");
+          const pct = pctRaw != null ? pctRaw : played > 0 ? (wins + ties * 0.5) / played : 0;
+          const rawSeed = statValue(stats, "playoffSeed");
+          // ESPN assigns 1-7 to teams in playoff position; everyone else gets a
+          // higher number we treat as "out".
+          const seed = rawSeed != null && rawSeed >= 1 && rawSeed <= 7 ? rawSeed : null;
+          const note = typeof e?.note?.description === "string" ? e.note.description : null;
+          teams.push({
+            abbr,
+            wins,
+            losses,
+            ties,
+            pct,
+            seed,
+            status: seed == null ? "out" : seed <= 4 ? "division" : "wildcard",
+            clinch: note,
+          });
+        }
+        byKey.set(divName, teams);
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  const all = [...byKey.values()].flat();
+  if (!all.length) return null;
+  // Preseason guard: before any game is played ESPN's provisional seeds are
+  // meaningless, so don't imply a playoff picture that doesn't exist yet.
+  const anyGames = all.some((t) => t.wins + t.losses + t.ties > 0);
+
+  const out: DivisionStanding[] = [];
+  for (const d of DIVISIONS) {
+    const teams = byKey.get(d.key);
+    if (!teams || !teams.length) continue;
+    if (!anyGames) for (const t of teams) ((t.seed = null), (t.status = "out"));
+    teams.sort((a, b) => {
+      const sa = a.seed ?? 99;
+      const sb = b.seed ?? 99;
+      if (sa !== sb) return sa - sb;
+      if (b.pct !== a.pct) return b.pct - a.pct;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return a.abbr.localeCompare(b.abbr);
+    });
+    out.push({ key: d.key, conf: d.conf, teams });
+  }
+  return out.length ? out : null;
+}
+
 export interface PlayoffResults {
   // Teams that WON in each round (i.e. advanced), by abbreviation.
   wildCardWinners: string[]; // advanced to Divisional

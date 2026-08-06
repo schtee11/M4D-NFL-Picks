@@ -8,9 +8,11 @@ import {
   getStandings,
   getPlayoffResults,
   getScoreboard,
+  getDivisionStandings,
   isRegularSeasonComplete,
   ActualStandings,
   PlayoffResults,
+  DivisionStanding,
 } from "./espn";
 import { Actuals } from "./scoring";
 
@@ -89,6 +91,26 @@ export async function getActuals(season = SEASON, forceRefresh = false): Promise
   }
 
   return { standings, playoffs };
+}
+
+// Full division standings with the live playoff picture, cached like the other
+// results so a transient ESPN hiccup falls back to the last good copy rather
+// than blanking the page. Unlike getActuals this is never gated on the season
+// being over — it's a running snapshot of every team's record.
+export async function getDivisionRecords(
+  season = SEASON,
+  forceRefresh = false,
+): Promise<DivisionStanding[] | null> {
+  const cache = await readCache(season, "divStandings");
+  const fresh = cache && Date.now() - cache.fetchedAt.getTime() < STALE_MS;
+  if (!forceRefresh && fresh) return cache!.data;
+
+  const fetched = await getDivisionStandings(season);
+  if (fetched && fetched.length) {
+    await writeCache(season, "divStandings", fetched);
+    return fetched;
+  }
+  return cache ? cache.data : null; // fall back to stale cache on failure
 }
 
 // Map of gameId -> winning abbr for a completed (or in-progress) week.
